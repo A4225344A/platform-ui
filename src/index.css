@@ -1,0 +1,91 @@
+:root {
+  color-scheme: light;
+  --color-bg: #eef2f7;
+  --color-surface: #ffffff;
+  --color-surface-soft: #f7f9fc;
+  --color-surface-sunk: #e6ebf2;
+  --color-line: #d9e0eb;
+  --color-elevated-line: #c8d2e1;
+
+  --color-ink: #16202c;
+  --color-ink-muted: #454f5c;
+  --color-ink-faint: #616b78;
+  --color-ink-ghost: #8a95a3;
+
+  --color-accent: #335cff;
+  --color-accent-soft: #edf2ff;
+  --color-needs-you: #b45309;
+  --color-needs-you-bg: #fef3e2;
+  --color-verified: #0f766e;
+  --color-verified-bg: #e3f3f1;
+  --color-failed: #b02a37;
+  --color-failed-bg: #fbe9eb;
+  --color-chart: #27b7a7;
+  --color-chart-fill: rgba(39, 183, 167, 0.16);
+  --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.08);
+  --shadow-tight: 0 8px 24px rgba(15, 23, 42, 0.08);
+
+  --font-mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Consolas, monospace;
+  --font-text: Inter, 'Source Han Sans TC', 'Noto Sans TC', system-ui, sans-serif;
+  --font-display: 'IBM Plex Sans Condensed', 'Inter Tight', 'Source Han Sans TC', 'Noto Sans TC', system-ui, sans-serif;
+
+  color: var(--color-ink);
+  background: var(--color-bg);
+  font-family: var(--font-text);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-bg: #0d111a;
+  --color-surface: #121826;
+  --color-surface-soft: #171f31;
+  --color-surface-sunk: #202a3c;
+  --color-line: #263244;
+  --color-elevated-line: #354157;
+
+  --color-ink: #eef3fb;
+  --color-ink-muted: #c5cfdd;
+  --color-ink-faint: #96a3b6;
+  --color-ink-ghost: #67758a;
+
+  --color-accent: #86a3ff;
+  --color-accent-soft: #182342;
+  --color-needs-you: #f5b461;
+  --color-needs-you-bg: #332414;
+  --color-verified: #5bd6c8;
+  --color-verified-bg: #16302d;
+  --color-failed: #ff9aa4;
+  --color-failed-bg: #361b22;
+  --color-chart: #5bd6c8;
+  --color-chart-fill: rgba(91, 214, 200, 0.16);
+  --shadow-soft: 0 22px 55px rgba(0, 0, 0, 0.28);
+  --shadow-tight: 0 12px 28px rgba(0, 0, 0, 0.22);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+a {
+  color: inherit;
+}
