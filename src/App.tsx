@@ -76,6 +76,25 @@ type OverviewData = {
   recent: RecentIncident[]
 }
 
+type ScorecardServiceResult = {
+  service: string
+  checks: Record<string, unknown>
+  passed: number
+  total: number
+}
+
+type ScorecardLatest = {
+  scorecard_id: string
+  name: string
+  evaluated_at: string | null
+  services: ScorecardServiceResult[]
+  totals: {
+    passed: number
+    total: number
+    percent: number | null
+  }
+}
+
 type TimelineItem = {
   at: string
   step: string
@@ -143,13 +162,6 @@ const logSinkOptions: readonly {
   },
 ]
 
-const servicePosture = [
-  { service: 'auth-api', owner: 'Core Platform', score: 82, incidents: 1, state: 'Needs attention' },
-  { service: 'orders-api', owner: 'Commerce', score: 94, incidents: 0, state: 'Passing' },
-  { service: 'payments-api', owner: 'Payments', score: 71, incidents: 2, state: 'At risk' },
-  { service: 'inventory-api', owner: 'Supply', score: 88, incidents: 0, state: 'Passing' },
-]
-
 const trendPoints = [42, 46, 44, 55, 49, 63, 58, 67, 61, 74, 70, 78]
 
 const sampleOverview: OverviewData = {
@@ -176,6 +188,19 @@ const sampleOverview: OverviewData = {
     { id: 918, service: 'orders-api', alertname: 'LatencyP95', status: 'verified', started_at: '2026-08-28T07:34:00+08:00' },
     { id: 914, service: 'payments-api', alertname: 'RollbackRequired', status: 'notify_only', started_at: '2026-08-28T06:22:00+08:00' },
   ],
+}
+
+const sampleScorecardLatest: ScorecardLatest = {
+  scorecard_id: 'selfheal-readiness',
+  name: 'Self-heal readiness',
+  evaluated_at: null,
+  services: [
+    { service: 'inventory-api', checks: { catalog_entry: true, metrics_scraped: null }, passed: 1, total: 2 },
+    { service: 'orders-api', checks: { catalog_entry: true, metrics_scraped: true }, passed: 2, total: 2 },
+    { service: 'payments-api', checks: { catalog_entry: true, metrics_scraped: null }, passed: 1, total: 2 },
+    { service: 'users-api', checks: { catalog_entry: true, metrics_scraped: true }, passed: 2, total: 2 },
+  ],
+  totals: { passed: 6, total: 8, percent: 75 },
 }
 
 const sampleIncident: IncidentDetail = {
@@ -325,8 +350,10 @@ export default App
 
 function OverviewPage({ labels, navigate }: { labels: Labeler; navigate: (href: string) => void }) {
   const state = useApiResource('/api/v1/overview', sampleOverview)
+  const scorecardState = useApiResource('/api/v1/scorecards/selfheal-readiness/latest', sampleScorecardLatest)
   const data = state.data
   const counters = data.counters
+  const scorecard = scorecardState.data
 
   return (
     <div className="page">
@@ -367,21 +394,33 @@ function OverviewPage({ labels, navigate }: { labels: Labeler; navigate: (href: 
         </section>
 
         <section className="panel">
-          <PanelTitle labels={labels} kickerKey="overview.serviceCatalog" titleKey="overview.productionPosture" meta={labels.text('chrome.scorecard')} />
+          <PanelTitle
+            labels={labels}
+            kickerKey="overview.serviceCatalog"
+            titleKey="overview.productionPosture"
+            meta={scorecard.evaluated_at ? labels.text('overview.synced', { time: formatDateTime(scorecard.evaluated_at) }) : scorecardSummary(scorecard)}
+          />
           <div className="posture-list">
-            {servicePosture.map((service) => (
-              <div className="posture-row" key={service.service}>
-                <span className="service-token"><Server size={15} /></span>
-                <div>
-                  <strong>{service.service}</strong>
-                  <small>{service.owner}</small>
-                </div>
-                <div className="score-cell">
-                  <span>{service.score}</span>
-                  <small>{service.state}</small>
-                </div>
-              </div>
-            ))}
+            {scorecard.services.length === 0 ? (
+              <div className="posture-empty">{labels.node('overview.noScorecardResults')}</div>
+            ) : (
+              scorecard.services.map((service) => {
+                const percent = scorePercent(service.passed, service.total)
+                return (
+                  <div className="posture-row" key={service.service}>
+                    <span className="service-token"><Server size={15} /></span>
+                    <div>
+                      <strong>{service.service}</strong>
+                      <small>{service.passed}/{service.total} checks</small>
+                    </div>
+                    <div className="score-cell">
+                      <span>{percent === null ? 'N/A' : `${percent}%`}</span>
+                      <small>{scoreStateLabel(percent)}</small>
+                    </div>
+                  </div>
+                )
+              })
+            )}
           </div>
         </section>
       </div>
@@ -870,6 +909,23 @@ function formatDateTime(isoTime: string): string {
   const timestamp = Date.parse(isoTime)
   if (Number.isNaN(timestamp)) return 'Unknown'
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(timestamp)
+}
+
+function scorePercent(passed: number, total: number): number | null {
+  if (!Number.isFinite(total) || total <= 0) return null
+  return Math.round((passed / total) * 100)
+}
+
+function scoreStateLabel(score: number | null): string {
+  if (score === null) return 'No result'
+  if (score >= 80) return 'Passing'
+  if (score >= 60) return 'Watch'
+  return 'At risk'
+}
+
+function scorecardSummary(scorecard: ScorecardLatest): string {
+  if (scorecard.totals.percent === null) return 'No scorecard result'
+  return `${scorecard.name} ${scorecard.totals.percent}%`
 }
 
 function detailToText(detail: unknown): string {

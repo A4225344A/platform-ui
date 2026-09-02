@@ -663,6 +663,15 @@
   display: grid;
 }
 
+.posture-empty {
+  min-height: 72px;
+  display: grid;
+  place-items: center;
+  color: var(--color-ink-faint);
+  background: var(--color-surface-soft);
+  font-size: 13px;
+}
+
 .posture-row {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) auto;
