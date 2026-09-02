@@ -44,3 +44,19 @@ VITE_ENABLE_WRITES=true npm run dev
 ```
 
 Do not put `ENGOPS_API_TOKEN` or other machine tokens in the SPA bundle or browser storage.
+
+## Deployment
+
+The `Deploy EngOps UI` workflow builds the Vite app and deploys `dist/` to the
+Task 11.5 S3 + CloudFront hosting stack.
+
+Defaults used by the lab:
+
+- `UI_BUCKET`: `platform-engops-ui-029099141993`
+- `CLOUDFRONT_DISTRIBUTION_ID`: `E1VMEDDXP35S53`
+- `AWS_ROLE_ARN`: `arn:aws:iam::029099141993:role/platform-gha-app-deploy`
+
+Repository variables with the same names can override these defaults if the
+CloudFront UI stack is recreated. Pull requests run build and lint only. Pushes
+to `main` and manual workflow runs deploy the artifact and create a CloudFront
+invalidation.
