@@ -34,6 +34,7 @@ import './App.css'
 type RouteState =
   | { name: 'overview' }
   | { name: 'incident'; id: string }
+  | { name: 'approvals' }
   | { name: 'settings' }
 
 type LanguageMode = 'en' | 'zh' | 'both'
@@ -93,6 +94,32 @@ type ScorecardLatest = {
     total: number
     percent: number | null
   }
+}
+
+type ApprovalItem = {
+  id: number
+  kind: string
+  service: string | null
+  action: string | null
+  payload: Record<string, unknown>
+  incident_id: number | null
+  trace_id: string | null
+  status: string
+  pr_number: number | null
+  pr_url: string | null
+  base_commit_sha: string | null
+  requested_by: string
+  requested_at: string
+  expires_at: string
+  decided_by: string | null
+  decided_at: string | null
+  decision_note: string | null
+  waiting_seconds: number
+}
+
+type ApprovalListData = {
+  status: string
+  approvals: ApprovalItem[]
 }
 
 type TimelineItem = {
@@ -180,7 +207,7 @@ const sampleOverview: OverviewData = {
   needs_you: [
     { id: 41, kind: 'remediation', service: 'payments-api', action: 'rollback', waiting_seconds: 720, href: '/incidents/922' },
     { id: 922, kind: 'timeline_stale', service: 'auth-api', action: null, waiting_seconds: 420, href: '/incidents/922' },
-    { id: 12, kind: 'policy_change', service: null, action: 'log_sink', waiting_seconds: 60, href: '/settings/log-sink' },
+    { id: 12, kind: 'policy_change', service: null, action: 'log_sink', waiting_seconds: 60, href: '/approvals' },
     { id: null, kind: 'catalog_gap', service: 'billing-api', action: null, waiting_seconds: null, href: null },
   ],
   recent: [
@@ -201,6 +228,35 @@ const sampleScorecardLatest: ScorecardLatest = {
     { service: 'users-api', checks: { catalog_entry: true, metrics_scraped: true }, passed: 2, total: 2 },
   ],
   totals: { passed: 6, total: 8, percent: 75 },
+}
+
+const sampleApprovals: ApprovalListData = {
+  status: 'pending',
+  approvals: [
+    {
+      id: 1,
+      kind: 'policy_change',
+      service: null,
+      action: 'log_sink',
+      payload: {
+        sink_type: 'cloudwatch',
+        connection_params: { region: 'ap-northeast-1', log_group: '/w3/ai-agent' },
+      },
+      incident_id: null,
+      trace_id: null,
+      status: 'pending',
+      pr_number: null,
+      pr_url: null,
+      base_commit_sha: null,
+      requested_by: 'lab-ui',
+      requested_at: '2026-09-01T22:21:27.952918Z',
+      expires_at: '2026-09-02T22:21:27.952918Z',
+      decided_by: null,
+      decided_at: null,
+      decision_note: null,
+      waiting_seconds: 34,
+    },
+  ],
 }
 
 const sampleIncident: IncidentDetail = {
@@ -281,6 +337,7 @@ function App() {
         <nav className="nav-list" aria-label="Primary navigation">
           <NavButton active={route.name === 'overview'} icon={LayoutDashboard} label={labels.node('nav.operations')} onClick={() => navigate('/')} />
           <NavButton active={route.name === 'incident'} icon={AlertTriangle} label={labels.node('nav.incidents')} onClick={() => navigate('/incidents/922')} />
+          <NavButton active={route.name === 'approvals'} icon={GitPullRequest} label={labels.node('nav.reviews')} onClick={() => navigate('/approvals')} />
           <NavButton active={route.name === 'settings'} icon={Settings2} label={labels.node('nav.controls')} onClick={() => navigate('/settings/log-sink')} />
         </nav>
 
@@ -339,6 +396,7 @@ function App() {
 
         {route.name === 'overview' && <OverviewPage labels={labels} navigate={navigate} />}
         {route.name === 'incident' && <IncidentPage labels={labels} incidentId={route.id} />}
+        {route.name === 'approvals' && <ApprovalsPage labels={labels} />}
         {route.name === 'settings' && <SettingsPage labels={labels} />}
       </main>
       </div>
@@ -347,6 +405,57 @@ function App() {
 }
 
 export default App
+
+function ApprovalsPage({ labels }: { labels: Labeler }) {
+  const state = useApiResource('/api/v1/approvals?status=pending', sampleApprovals)
+  const data = state.data
+
+  return (
+    <div className="page">
+      <PageHeader
+        labels={labels}
+        eyebrowKey="approvals.eyebrow"
+        titleKey="approvals.title"
+        descriptionKey="approvals.description"
+        side={<ApiBadge labels={labels} state={state} />}
+      />
+
+      <section className="panel">
+        <PanelTitle labels={labels} kickerKey="approvals.queue" titleKey="approvals.pending" meta={`${data.approvals.length} items`} />
+        {data.approvals.length === 0 ? (
+          <div className="empty-approvals">
+            <ShieldCheck size={22} />
+            <span>{labels.node('approvals.empty')}</span>
+          </div>
+        ) : (
+          <div className="approval-list">
+            {data.approvals.map((approval) => (
+              <article className="approval-card" key={approval.id}>
+                <div className="approval-head">
+                  <div>
+                    <span className="section-kicker">#{approval.id} {approval.kind}</span>
+                    <h2>{approval.action ?? labels.text('needs.noPayload')}</h2>
+                  </div>
+                  <StatusPill labels={labels} status={approval.status} />
+                </div>
+                <div className="approval-meta">
+                  <span><Clock3 size={14} />{fmtDur(approval.waiting_seconds, labels)}</span>
+                  <span>{labels.node('approvals.requestedBy', { actor: approval.requested_by })}</span>
+                  <span>{labels.node('approvals.expires', { time: formatDateTime(approval.expires_at) })}</span>
+                </div>
+                <pre className="approval-payload">{JSON.stringify(approval.payload, null, 2)}</pre>
+                <div className="approval-note">
+                  <ShieldCheck size={15} />
+                  <span>{labels.node('approvals.readOnlyGuard')}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
 
 function OverviewPage({ labels, navigate }: { labels: Labeler; navigate: (href: string) => void }) {
   const state = useApiResource('/api/v1/overview', sampleOverview)
@@ -884,6 +993,7 @@ function useApiResource<T>(url: string, fallbackData: T): AsyncState<T> {
 function routeFromPath(pathname: string): RouteState {
   const incident = pathname.match(/^\/incidents\/([^/]+)$/)
   if (incident) return { name: 'incident', id: decodeURIComponent(incident[1]) }
+  if (pathname === '/approvals') return { name: 'approvals' }
   if (pathname === '/settings/log-sink') return { name: 'settings' }
   return { name: 'overview' }
 }

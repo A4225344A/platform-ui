@@ -7,6 +7,7 @@ const resources = {
       nav: {
         operations: 'Operations',
         incidents: 'Incidents',
+        reviews: 'Reviews',
         controls: 'Controls',
       },
       chrome: {
@@ -63,6 +64,17 @@ const resources = {
         policy_change: 'Policy change',
         globalControl: 'Global control',
         noPayload: 'No action payload',
+      },
+      approvals: {
+        eyebrow: 'Human as a Judge',
+        title: 'Review queue',
+        description: 'Pending AI or policy proposals are visible here before any production mutation is allowed.',
+        queue: 'Approval Queue',
+        pending: 'Pending reviews',
+        empty: 'No pending approvals',
+        requestedBy: 'Requested by {{actor}}',
+        expires: 'Expires {{time}}',
+        readOnlyGuard: 'Read-only view. No approval or production mutation is available from this screen.',
       },
       incident: {
         eyebrow: 'Incident #{{id}}',
@@ -142,6 +154,7 @@ const resources = {
       nav: {
         operations: '\u71df\u904b\u7e3d\u89bd',
         incidents: '\u4e8b\u6545',
+        reviews: '\u5be9\u6838',
         controls: '\u63a7\u5236',
       },
       chrome: {
@@ -198,6 +211,17 @@ const resources = {
         policy_change: '\u653f\u7b56\u8b8a\u66f4',
         globalControl: '\u5168\u57df\u63a7\u5236',
         noPayload: '\u7121\u52d5\u4f5c payload',
+      },
+      approvals: {
+        eyebrow: 'Human as a Judge',
+        title: '\u5be9\u6838\u4f47\u5217',
+        description: '\u5728\u4efb\u4f55\u751f\u7522\u74b0\u5883\u8b8a\u66f4\u88ab\u5141\u8a31\u524d\uff0c\u5148\u96c6\u4e2d\u6aa2\u8996 AI \u6216\u653f\u7b56\u63d0\u8b70\u3002',
+        queue: '\u6838\u51c6\u4f47\u5217',
+        pending: '\u5f85\u5be9\u6838',
+        empty: '\u6c92\u6709\u5f85\u5be9\u6838\u9805\u76ee',
+        requestedBy: '\u7531 {{actor}} \u5efa\u7acb',
+        expires: '\u5230\u671f {{time}}',
+        readOnlyGuard: '\u552f\u8b80\u756b\u9762\uff0c\u6b64\u8655\u4e0d\u63d0\u4f9b\u6838\u51c6\u6216\u4fee\u6539\u751f\u7522\u74b0\u5883\u7684\u52d5\u4f5c\u3002',
       },
       incident: {
         eyebrow: '\u4e8b\u6545 #{{id}}',
