@@ -50,13 +50,14 @@ Do not put `ENGOPS_API_TOKEN` or other machine tokens in the SPA bundle or brows
 The `Deploy EngOps UI` workflow builds the Vite app and deploys `dist/` to the
 Task 11.5 S3 + CloudFront hosting stack.
 
-Defaults used by the lab:
+Required repository variables (Settings → Secrets and variables → Actions →
+Variables) — the workflow has no built-in defaults, so it fails fast if any
+are missing:
 
-- `UI_BUCKET`: `platform-engops-ui-029099141993`
-- `CLOUDFRONT_DISTRIBUTION_ID`: `E1VMEDDXP35S53`
-- `AWS_ROLE_ARN`: `arn:aws:iam::029099141993:role/platform-gha-app-deploy`
+- `AWS_REGION`
+- `GHA_APP_DEPLOY_ROLE_ARN`
+- `UI_BUCKET`
+- `CLOUDFRONT_DISTRIBUTION_ID`
 
-Repository variables with the same names can override these defaults if the
-CloudFront UI stack is recreated. Pull requests run build and lint only. Pushes
-to `main` and manual workflow runs deploy the artifact and create a CloudFront
-invalidation.
+Pull requests run build and lint only. Pushes to `main` and manual workflow
+runs deploy the artifact and create a CloudFront invalidation.
