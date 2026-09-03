@@ -17,6 +17,7 @@ import {
   GitPullRequest,
   Languages,
   LayoutDashboard,
+  ListOrdered,
   Menu,
   Moon,
   Radio,
@@ -138,6 +139,27 @@ type AuditLogItem = {
 
 type AuditLogListData = {
   audit_log: AuditLogItem[]
+}
+
+type ExecutionPlanStep = {
+  order: number
+  name: string
+  command: string | null
+  expected_result: string
+}
+
+type ApprovalExecutionPlan = {
+  approval_id: number
+  kind: string
+  action: string | null
+  status: string
+  summary: string
+  preconditions: string[]
+  steps: ExecutionPlanStep[]
+  retry_limit: number
+  rollback: string
+  requires_human_decision: boolean
+  mutation_enabled: boolean
 }
 
 type TimelineItem = {
@@ -294,6 +316,29 @@ const sampleAuditLog: AuditLogListData = {
       trace_id: null,
     },
   ],
+}
+
+const sampleExecutionPlan: ApprovalExecutionPlan = {
+  approval_id: 1,
+  kind: 'policy_change',
+  action: 'log_sink',
+  status: 'pending',
+  summary: 'Preview policy_change/log_sink to cloudwatch (log_group=/w3/ai-agent, region=ap-northeast-1).',
+  preconditions: [
+    'approval status must still be pending',
+    'operator must use the internal decision endpoint with ENGOPS_DECISION_TOKEN',
+    'CloudFront public entry remains read-only and must not allow POST mutation',
+  ],
+  steps: [
+    { order: 1, name: 'Create GitOps change', command: null, expected_result: 'A pull request changes only the log sink manifest or configuration.' },
+    { order: 2, name: 'Review bounded diff', command: null, expected_result: 'Reviewer confirms the diff is limited to the approved log sink target.' },
+    { order: 3, name: 'Merge and sync', command: 'argocd app sync platform-apps', expected_result: 'ArgoCD applies the merged GitOps state.' },
+    { order: 4, name: 'Verify log route', command: null, expected_result: 'otel-collector and ai-agent stay ready and logs arrive at the approved sink.' },
+  ],
+  retry_limit: 2,
+  rollback: 'Revert the GitOps commit or PR, sync platform-apps, and record the rollback in audit_log.',
+  requires_human_decision: true,
+  mutation_enabled: false,
 }
 
 const sampleIncident: IncidentDetail = {
@@ -498,6 +543,7 @@ function AuditLogPage({ labels }: { labels: Labeler }) {
 
 function ApprovalsPage({ labels }: { labels: Labeler }) {
   const [approvalStatus, setApprovalStatus] = useState<ApprovalStatus>('pending')
+  const [expandedPlanId, setExpandedPlanId] = useState<number | null>(null)
   const fallbackApprovals = useMemo(
     () => ({
       status: approvalStatus,
@@ -564,6 +610,16 @@ function ApprovalsPage({ labels }: { labels: Labeler }) {
                   </div>
                 ) : null}
                 <pre className="approval-payload">{JSON.stringify(approval.payload, null, 2)}</pre>
+                <button
+                  className="link-button plan-toggle"
+                  type="button"
+                  aria-expanded={expandedPlanId === approval.id}
+                  onClick={() => setExpandedPlanId((current) => (current === approval.id ? null : approval.id))}
+                >
+                  <ListOrdered size={14} />
+                  {labels.node(expandedPlanId === approval.id ? 'approvals.hidePlan' : 'approvals.viewPlan')}
+                </button>
+                {expandedPlanId === approval.id ? <ExecutionPlanPanel labels={labels} approvalId={approval.id} /> : null}
                 <div className="approval-note">
                   <ShieldCheck size={15} />
                   <span>{labels.node('approvals.readOnlyGuard')}</span>
@@ -573,6 +629,64 @@ function ApprovalsPage({ labels }: { labels: Labeler }) {
           </div>
         )}
       </section>
+    </div>
+  )
+}
+
+function ExecutionPlanPanel({ labels, approvalId }: { labels: Labeler; approvalId: number }) {
+  const fallback = useMemo(() => ({ ...sampleExecutionPlan, approval_id: approvalId }), [approvalId])
+  const state = useApiResource(`/api/v1/approvals/${approvalId}/execution-plan`, fallback)
+  const data = state.data
+
+  return (
+    <div className="execution-plan">
+      <div className="execution-plan-head">
+        <span className="section-kicker">{labels.node('approvals.planKicker')}</span>
+        <ApiBadge labels={labels} state={state} />
+      </div>
+      <p className="execution-plan-summary">{data.summary}</p>
+
+      {data.preconditions.length > 0 && (
+        <div className="execution-plan-block">
+          <span className="section-kicker">{labels.node('approvals.planPreconditions')}</span>
+          <ul className="execution-plan-preconditions">
+            {data.preconditions.map((item) => (
+              <li key={item}><ShieldCheck size={13} />{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="execution-plan-block">
+        <span className="section-kicker">{labels.node('approvals.planSteps')}</span>
+        {data.steps.length === 0 ? (
+          <span className="muted-note">{labels.node('approvals.planEmpty')}</span>
+        ) : (
+          <ol className="execution-plan-steps">
+            {data.steps.map((step) => (
+              <li key={step.order}>
+                <strong>{step.name}</strong>
+                {step.command ? <code>{step.command}</code> : null}
+                <span>{step.expected_result}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+
+      <div className="execution-plan-block">
+        <span className="section-kicker">{labels.node('approvals.planRollback')}</span>
+        <p>{data.rollback}</p>
+      </div>
+
+      <div className="approval-note">
+        <ShieldCheck size={15} />
+        <span>{labels.node('approvals.planReadOnlyGuard', { retries: data.retry_limit })}</span>
+      </div>
+      <div className="approval-note">
+        <ShieldCheck size={15} />
+        <span>{labels.node('approvals.planMutationDisabled')}</span>
+      </div>
     </div>
   )
 }
