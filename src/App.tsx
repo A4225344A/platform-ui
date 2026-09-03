@@ -360,6 +360,7 @@ function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [theme, setTheme] = useStoredState<ThemeMode>('engops-theme', 'light')
   const [language, setLanguage] = useStoredState<LanguageMode>('engops-language-mode', 'both')
+  const [operatorName, setOperatorName] = useStoredState<string>('engops-operator-name', 'lab-ui')
   const labels = useLabels(language)
   const muiTheme = useMemo(
     () =>
@@ -437,13 +438,21 @@ function App() {
             <span>API</span>
             <code>/api/v1</code>
           </div>
-          <div className="operator">
-            <span className="avatar">YL</span>
+          <button
+            className="operator"
+            type="button"
+            title={labels.text('chrome.operatorEdit')}
+            onClick={() => {
+              const next = window.prompt(labels.text('chrome.operatorEdit'), operatorName)
+              if (next && next.trim()) setOperatorName(next.trim())
+            }}
+          >
+            <span className="avatar">{operatorInitials(operatorName)}</span>
             <div>
-              <strong>Yun-Lin</strong>
-              <small>On-call engineer</small>
+              <strong>{operatorName}</strong>
+              <small>{labels.node('chrome.operatorRole')}</small>
             </div>
-          </div>
+          </button>
         </div>
       </aside>
 
@@ -1255,6 +1264,12 @@ function secondsSince(isoTime: string): number {
 
 function stepKey(step: string): string {
   return `steps.${step}`
+}
+
+function operatorInitials(name: string): string {
+  const letters = name.trim().match(/[A-Za-z0-9一-鿿]/g)
+  if (!letters || letters.length === 0) return '?'
+  return letters.slice(0, 2).join('').toUpperCase()
 }
 
 function formatDateTime(isoTime: string): string {

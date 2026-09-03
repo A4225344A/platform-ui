@@ -190,8 +190,14 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  border: none;
   border-top: 1px solid var(--color-line);
   padding: 15px 8px 0;
+  width: 100%;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .avatar {

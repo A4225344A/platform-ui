@@ -17,6 +17,8 @@ const resources = {
         last24h: 'Last 24h',
         scorecard: 'Scorecard',
         productionReadiness: 'Production readiness',
+        operatorRole: 'Local display name (click to edit)',
+        operatorEdit: 'Set your name for this browser',
       },
       common: {
         apiUnavailable: 'API unavailable',
@@ -200,6 +202,8 @@ const resources = {
         last24h: '\u6700\u8fd1 24 \u5c0f\u6642',
         scorecard: '\u8a08\u5206\u5361',
         productionReadiness: '\u751f\u7522\u5c31\u7dd2\u5ea6',
+        operatorRole: '\u672c\u6a5f\u986f\u793a\u540d\u7a31\uff08\u9ede\u64ca\u53ef\u4fee\u6539\uff09',
+        operatorEdit: '\u8a2d\u5b9a\u6b64\u700f\u89bd\u5668\u4f7f\u7528\u7684\u540d\u7a31',
       },
       common: {
         apiUnavailable: 'API \u7121\u6cd5\u9023\u7dda',
