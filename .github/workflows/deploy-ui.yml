@@ -9,11 +9,15 @@ on:
 permissions:
   contents: read
 
+# 以下四個帳號專屬值一律來自 repo variables,沒有寫死的 fallback——
+# fork 這份 repo 的人請先在 Settings → Secrets and variables → Actions → Variables
+# 設定 AWS_REGION / GHA_APP_DEPLOY_ROLE_ARN / UI_BUCKET / CLOUDFRONT_DISTRIBUTION_ID,
+# 沒設就會在 configure-aws-credentials / aws s3 sync 那幾步直接失敗。
 env:
-  AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-1' }}
-  AWS_ROLE_ARN: ${{ vars.GHA_APP_DEPLOY_ROLE_ARN || 'arn:aws:iam::029099141993:role/platform-gha-app-deploy' }}
-  UI_BUCKET: ${{ vars.UI_BUCKET || 'platform-engops-ui-029099141993' }}
-  CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID || 'E1VMEDDXP35S53' }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ROLE_ARN: ${{ vars.GHA_APP_DEPLOY_ROLE_ARN }}
+  UI_BUCKET: ${{ vars.UI_BUCKET }}
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
 
 jobs:
   build:
