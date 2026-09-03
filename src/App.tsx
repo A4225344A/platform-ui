@@ -9,7 +9,6 @@ import {
   ArrowRight,
   ArrowUpRight,
   CheckCircle2,
-  ChevronDown,
   Clock3,
   Database,
   FileCog,
@@ -76,9 +75,31 @@ type RecentIncident = {
 
 type OverviewData = {
   counters_computed_at: string
+  window_hours: number
   counters: Counters
   needs_you: NeedYou[]
   recent: RecentIncident[]
+}
+
+type SearchServiceResult = {
+  service: string
+  display_name: string | null
+  owner_team: string | null
+  owner_email: string | null
+}
+
+type SearchIncidentResult = {
+  id: number
+  service: string
+  alertname: string | null
+  status: string
+  started_at: string
+}
+
+type SearchResults = {
+  query: string
+  services: SearchServiceResult[]
+  incidents: SearchIncidentResult[]
 }
 
 type ScorecardServiceResult = {
@@ -233,6 +254,7 @@ const trendPoints = [42, 46, 44, 55, 49, 63, 58, 67, 61, 74, 70, 78]
 
 const sampleOverview: OverviewData = {
   counters_computed_at: '2026-08-28T11:31:04Z',
+  window_hours: 24,
   counters: {
     alerts: 18,
     l0_absorbed: 11,
@@ -361,6 +383,9 @@ function App() {
   const [theme, setTheme] = useStoredState<ThemeMode>('engops-theme', 'light')
   const [language, setLanguage] = useStoredState<LanguageMode>('engops-language-mode', 'both')
   const [operatorName, setOperatorName] = useStoredState<string>('engops-operator-name', 'lab-ui')
+  const [windowHours, setWindowHours] = useState(24)
+  const apiHealthy = useApiHealth()
+  const sidebarScorecard = useApiResource('/api/v1/scorecards/selfheal-readiness/latest', sampleScorecardLatest)
   const labels = useLabels(language)
   const muiTheme = useMemo(
     () =>
@@ -427,14 +452,14 @@ function App() {
 
         <div className="sidebar-card">
           <span className="section-kicker">{labels.node('chrome.scorecard')}</span>
-          <strong>87%</strong>
+          <strong>{sidebarScorecard.data.totals.percent === null ? 'N/A' : `${sidebarScorecard.data.totals.percent}%`}</strong>
           <small>{labels.node('chrome.productionReadiness')}</small>
-          <div className="mini-meter"><span style={{ width: '87%' }} /></div>
+          <div className="mini-meter"><span style={{ width: `${sidebarScorecard.data.totals.percent ?? 0}%` }} /></div>
         </div>
 
         <div className="sidebar-footer">
-          <div className="health-chip">
-            <span className="live-dot" />
+          <div className="health-chip" title={apiHealthy === false ? labels.text('common.apiUnavailable') : undefined}>
+            <span className={`live-dot${apiHealthy === false ? ' down' : apiHealthy === null ? ' pending' : ''}`} />
             <span>API</span>
             <code>/api/v1</code>
           </div>
@@ -461,13 +486,20 @@ function App() {
           <button className="icon-button mobile-only" type="button" aria-label="Open navigation" onClick={() => setMobileNavOpen((open) => !open)}>
             <Menu size={20} />
           </button>
-          <div className="search-box">
-            <Search size={16} />
-            <span>{labels.node('chrome.search')}</span>
-          </div>
+          <SearchBox labels={labels} navigate={navigate} />
           <div className="top-actions">
-            <button className="top-select" type="button">{labels.node('chrome.production')}<ChevronDown size={15} /></button>
-            <button className="top-select" type="button">{labels.node('chrome.last24h')}<ChevronDown size={15} /></button>
+            <SegmentedControl
+              ariaLabel="Time window"
+              icon={<Clock3 size={15} />}
+              value={String(windowHours)}
+              options={[
+                { value: '1', label: '1h' },
+                { value: '6', label: '6h' },
+                { value: '24', label: '24h' },
+                { value: '168', label: '7d' },
+              ]}
+              onChange={(next) => setWindowHours(Number(next))}
+            />
             <SegmentedControl
               ariaLabel="Language"
               icon={<Languages size={15} />}
@@ -486,7 +518,7 @@ function App() {
           </div>
         </header>
 
-        {route.name === 'overview' && <OverviewPage labels={labels} navigate={navigate} />}
+        {route.name === 'overview' && <OverviewPage labels={labels} navigate={navigate} windowHours={windowHours} />}
         {route.name === 'incident' && <IncidentPage labels={labels} incidentId={route.id} />}
         {route.name === 'approvals' && <ApprovalsPage labels={labels} />}
         {route.name === 'audit' && <AuditLogPage labels={labels} />}
@@ -707,12 +739,13 @@ function ExecutionPlanPanel({ labels, approvalId }: { labels: Labeler; approvalI
   )
 }
 
-function OverviewPage({ labels, navigate }: { labels: Labeler; navigate: (href: string) => void }) {
-  const state = useApiResource('/api/v1/overview', sampleOverview)
+function OverviewPage({ labels, navigate, windowHours }: { labels: Labeler; navigate: (href: string) => void; windowHours: number }) {
+  const state = useApiResource(`/api/v1/overview?window_hours=${windowHours}`, sampleOverview)
   const scorecardState = useApiResource('/api/v1/scorecards/selfheal-readiness/latest', sampleScorecardLatest)
   const data = state.data
   const counters = data.counters
   const scorecard = scorecardState.data
+  const windowLabel = windowHours >= 24 && windowHours % 24 === 0 ? `${windowHours / 24}d` : `${windowHours}h`
 
   return (
     <div className="page">
@@ -725,7 +758,7 @@ function OverviewPage({ labels, navigate }: { labels: Labeler; navigate: (href: 
       />
 
       <section className="metric-grid" aria-label="24 hour operational metrics">
-        <MetricCard labels={labels} labelKey="overview.incidents" value={String(counters.alerts)} captionKey="overview.incidentsCaption" tone="default" />
+        <MetricCard labels={labels} labelKey="overview.incidents" value={String(counters.alerts)} captionKey="overview.incidentsCaption" captionOptions={{ window: windowLabel }} tone="default" />
         <MetricCard labels={labels} labelKey="overview.aiTriaged" value={String(counters.ai_diagnosed)} captionKey="overview.aiTriagedCaption" tone="info" />
         <MetricCard labels={labels} labelKey="overview.autoFixed" value={String(counters.auto_remediated)} captionKey="overview.verifiedCount" captionOptions={{ count: counters.verified }} tone="success" />
         <MetricCard labels={labels} labelKey="overview.notifyOnly" value={String(counters.notify_only)} captionKey="overview.cooldownCount" captionOptions={{ count: counters.skipped_cooldown }} tone="warning" />
@@ -1115,6 +1148,78 @@ function SegmentedControl({ ariaLabel, icon, value, options, onChange }: { ariaL
   )
 }
 
+function SearchBox({ labels, navigate }: { labels: Labeler; navigate: (href: string) => void }) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<SearchResults | null>(null)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    const term = query.trim()
+    if (term.length < 2) return
+    let active = true
+    const timer = window.setTimeout(() => {
+      fetch(`/api/v1/search?q=${encodeURIComponent(term)}`)
+        .then((response) => (response.ok ? (response.json() as Promise<SearchResults>) : Promise.reject(new Error(`HTTP ${response.status}`))))
+        .then((data) => {
+          if (active) setResults(data)
+        })
+        .catch(() => {
+          if (active) setResults(null)
+        })
+    }, 250)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [query])
+
+  const trimmed = query.trim()
+  const showPanel = open && trimmed.length >= 2
+  const hasResults = results !== null && (results.services.length > 0 || results.incidents.length > 0)
+
+  return (
+    <div className="search-box" onBlur={() => window.setTimeout(() => setOpen(false), 150)}>
+      <Search size={16} />
+      <input
+        type="text"
+        value={query}
+        placeholder={labels.text('chrome.search')}
+        onChange={(event) => {
+          setQuery(event.target.value)
+          setOpen(true)
+        }}
+        onFocus={() => setOpen(true)}
+      />
+      {showPanel && (
+        <div className="search-results">
+          {!hasResults && <div className="search-empty">{labels.node('chrome.searchEmpty')}</div>}
+          {results?.incidents.map((incident) => (
+            <button
+              className="search-result-row"
+              type="button"
+              key={`incident-${incident.id}`}
+              onMouseDown={() => {
+                navigate(`/incidents/${incident.id}`)
+                setQuery('')
+                setOpen(false)
+              }}
+            >
+              <AlertTriangle size={14} />
+              <span>#{incident.id} {incident.service} — {incident.alertname ?? incident.status}</span>
+            </button>
+          ))}
+          {results?.services.map((service) => (
+            <div className="search-result-row search-result-static" key={`service-${service.service}`}>
+              <Server size={14} />
+              <span>{service.display_name ?? service.service}{service.owner_team ? ` — ${service.owner_team}` : ''}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function MuiThemeToggle({ value, onChange }: { value: ThemeMode; onChange: (value: ThemeMode) => void }) {
   const handleChange = (_event: MouseEvent<HTMLElement>, nextMode: ThemeMode | null) => {
     if (nextMode !== null) onChange(nextMode)
@@ -1238,6 +1343,31 @@ function useApiResource<T>(url: string, fallbackData: T): AsyncState<T> {
 
   if (state.url !== url) return { status: 'loading', data: fallbackData, error: null, fallback: false }
   return state
+}
+
+function useApiHealth(): boolean | null {
+  const [healthy, setHealthy] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    let active = true
+    const check = () => {
+      fetch('/healthz')
+        .then((response) => {
+          if (active) setHealthy(response.ok)
+        })
+        .catch(() => {
+          if (active) setHealthy(false)
+        })
+    }
+    check()
+    const interval = window.setInterval(check, 30000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [])
+
+  return healthy
 }
 
 function routeFromPath(pathname: string): RouteState {
