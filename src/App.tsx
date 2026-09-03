@@ -42,6 +42,7 @@ type RouteState =
 type LanguageMode = 'en' | 'zh' | 'both'
 type ThemeMode = 'light' | 'dark'
 type Tone = 'default' | 'info' | 'success' | 'warning' | 'danger'
+type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'expired' | 'all'
 
 type Counters = {
   alerts: number
@@ -496,7 +497,15 @@ function AuditLogPage({ labels }: { labels: Labeler }) {
 }
 
 function ApprovalsPage({ labels }: { labels: Labeler }) {
-  const state = useApiResource('/api/v1/approvals?status=pending', sampleApprovals)
+  const [approvalStatus, setApprovalStatus] = useState<ApprovalStatus>('pending')
+  const fallbackApprovals = useMemo(
+    () => ({
+      status: approvalStatus,
+      approvals: approvalStatus === 'pending' || approvalStatus === 'all' ? sampleApprovals.approvals : [],
+    }),
+    [approvalStatus],
+  )
+  const state = useApiResource(`/api/v1/approvals?status=${approvalStatus}`, fallbackApprovals)
   const data = state.data
 
   return (
@@ -510,7 +519,22 @@ function ApprovalsPage({ labels }: { labels: Labeler }) {
       />
 
       <section className="panel">
-        <PanelTitle labels={labels} kickerKey="approvals.queue" titleKey="approvals.pending" meta={`${data.approvals.length} items`} />
+        <div className="approval-toolbar">
+          <PanelTitle labels={labels} kickerKey="approvals.queue" titleKey="approvals.history" meta={`${data.approvals.length} items`} />
+          <SegmentedControl
+            ariaLabel={labels.text('approvals.statusFilter')}
+            icon={<GitPullRequest size={15} />}
+            value={approvalStatus}
+            options={[
+              { value: 'pending', label: labels.text('approvals.statusPending') },
+              { value: 'approved', label: labels.text('approvals.statusApproved') },
+              { value: 'rejected', label: labels.text('approvals.statusRejected') },
+              { value: 'expired', label: labels.text('approvals.statusExpired') },
+              { value: 'all', label: labels.text('approvals.statusAll') },
+            ]}
+            onChange={(next) => setApprovalStatus(next as ApprovalStatus)}
+          />
+        </div>
         {data.approvals.length === 0 ? (
           <div className="empty-approvals">
             <ShieldCheck size={22} />
@@ -531,7 +555,14 @@ function ApprovalsPage({ labels }: { labels: Labeler }) {
                   <span><Clock3 size={14} />{fmtDur(approval.waiting_seconds, labels)}</span>
                   <span>{labels.node('approvals.requestedBy', { actor: approval.requested_by })}</span>
                   <span>{labels.node('approvals.expires', { time: formatDateTime(approval.expires_at) })}</span>
+                  {approval.decided_by ? <span>{labels.node('approvals.decidedBy', { actor: approval.decided_by })}</span> : null}
                 </div>
+                {approval.decision_note || approval.base_commit_sha ? (
+                  <div className="approval-details">
+                    {approval.decision_note ? <span>{labels.node('approvals.decisionNote', { note: approval.decision_note })}</span> : null}
+                    {approval.base_commit_sha ? <code>{approval.base_commit_sha}</code> : null}
+                  </div>
+                ) : null}
                 <pre className="approval-payload">{JSON.stringify(approval.payload, null, 2)}</pre>
                 <div className="approval-note">
                   <ShieldCheck size={15} />

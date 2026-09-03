@@ -701,6 +701,18 @@
   display: grid;
 }
 
+.approval-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.approval-toolbar .panel-header {
+  margin-bottom: 0;
+}
+
 .audit-object {
   display: grid;
   gap: 7px;
@@ -758,6 +770,24 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.approval-details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+
+.approval-details code {
+  border: 1px solid var(--color-line);
+  border-radius: 7px;
+  padding: 5px 7px;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  font: 12px/1.2 var(--font-mono);
 }
 
 .approval-payload {
@@ -855,6 +885,22 @@
 .status-pill.running {
   color: var(--color-needs-you);
   background: var(--color-needs-you-bg);
+}
+
+.status-pill.pending {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.status-pill.approved {
+  color: var(--color-verified);
+  background: var(--color-verified-bg);
+}
+
+.status-pill.rejected,
+.status-pill.expired {
+  color: var(--color-failed);
+  background: var(--color-failed-bg);
 }
 
 .status-pill.verified {
@@ -1203,7 +1249,7 @@
     display: none;
   }
 
-  .segmented {
+  .top-actions .segmented {
     display: none;
   }
 
@@ -1212,6 +1258,7 @@
   }
 
   .page-header,
+  .approval-toolbar,
   .setting-action {
     align-items: flex-start;
     flex-direction: column;
