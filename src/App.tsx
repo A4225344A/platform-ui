@@ -603,10 +603,17 @@ function ApprovalsPage({ labels }: { labels: Labeler }) {
                   <span>{labels.node('approvals.expires', { time: formatDateTime(approval.expires_at) })}</span>
                   {approval.decided_by ? <span>{labels.node('approvals.decidedBy', { actor: approval.decided_by })}</span> : null}
                 </div>
-                {approval.decision_note || approval.base_commit_sha ? (
+                {approval.decision_note || approval.base_commit_sha || approval.pr_url ? (
                   <div className="approval-details">
                     {approval.decision_note ? <span>{labels.node('approvals.decisionNote', { note: approval.decision_note })}</span> : null}
                     {approval.base_commit_sha ? <code>{approval.base_commit_sha}</code> : null}
+                    {approval.pr_url ? (
+                      <a className="pr-link" href={approval.pr_url} target="_blank" rel="noreferrer">
+                        <GitPullRequest size={13} />
+                        {labels.node('approvals.linkedPr', { number: approval.pr_number ?? '?' })}
+                        <ArrowUpRight size={13} />
+                      </a>
+                    ) : null}
                   </div>
                 ) : null}
                 <pre className="approval-payload">{JSON.stringify(approval.payload, null, 2)}</pre>
