@@ -21,6 +21,7 @@ import {
   Moon,
   Radio,
   RefreshCw,
+  ScrollText,
   Search,
   Server,
   Settings2,
@@ -35,6 +36,7 @@ type RouteState =
   | { name: 'overview' }
   | { name: 'incident'; id: string }
   | { name: 'approvals' }
+  | { name: 'audit' }
   | { name: 'settings' }
 
 type LanguageMode = 'en' | 'zh' | 'both'
@@ -120,6 +122,21 @@ type ApprovalItem = {
 type ApprovalListData = {
   status: string
   approvals: ApprovalItem[]
+}
+
+type AuditLogItem = {
+  id: number
+  at: string
+  actor: string
+  verb: string
+  object: string
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+  trace_id: string | null
+}
+
+type AuditLogListData = {
+  audit_log: AuditLogItem[]
 }
 
 type TimelineItem = {
@@ -259,6 +276,25 @@ const sampleApprovals: ApprovalListData = {
   ],
 }
 
+const sampleAuditLog: AuditLogListData = {
+  audit_log: [
+    {
+      id: 10,
+      at: '2026-09-02T21:42:00Z',
+      actor: 'operator',
+      verb: 'secret.rotate',
+      object: 'default/platform-secrets/engops-decision-token',
+      before: null,
+      after: {
+        sha256: '3f4b2d9a8b3b4b9ef5e25a1f3c9e6b7df1c9d8292f4d5f948e6f424a9f1c2d3e',
+        storage: 'kubernetes-secret',
+        purpose: 'engops approval decision endpoint',
+      },
+      trace_id: null,
+    },
+  ],
+}
+
 const sampleIncident: IncidentDetail = {
   id: 922,
   service: 'auth-api',
@@ -338,6 +374,7 @@ function App() {
           <NavButton active={route.name === 'overview'} icon={LayoutDashboard} label={labels.node('nav.operations')} onClick={() => navigate('/')} />
           <NavButton active={route.name === 'incident'} icon={AlertTriangle} label={labels.node('nav.incidents')} onClick={() => navigate('/incidents/922')} />
           <NavButton active={route.name === 'approvals'} icon={GitPullRequest} label={labels.node('nav.reviews')} onClick={() => navigate('/approvals')} />
+          <NavButton active={route.name === 'audit'} icon={ScrollText} label={labels.node('nav.audit')} onClick={() => navigate('/audit-log')} />
           <NavButton active={route.name === 'settings'} icon={Settings2} label={labels.node('nav.controls')} onClick={() => navigate('/settings/log-sink')} />
         </nav>
 
@@ -397,6 +434,7 @@ function App() {
         {route.name === 'overview' && <OverviewPage labels={labels} navigate={navigate} />}
         {route.name === 'incident' && <IncidentPage labels={labels} incidentId={route.id} />}
         {route.name === 'approvals' && <ApprovalsPage labels={labels} />}
+        {route.name === 'audit' && <AuditLogPage labels={labels} />}
         {route.name === 'settings' && <SettingsPage labels={labels} />}
       </main>
       </div>
@@ -405,6 +443,57 @@ function App() {
 }
 
 export default App
+
+function AuditLogPage({ labels }: { labels: Labeler }) {
+  const state = useApiResource('/api/v1/audit-log?limit=50', sampleAuditLog)
+  const data = state.data
+
+  return (
+    <div className="page">
+      <PageHeader
+        labels={labels}
+        eyebrowKey="audit.eyebrow"
+        titleKey="audit.title"
+        descriptionKey="audit.description"
+        side={<ApiBadge labels={labels} state={state} />}
+      />
+
+      <section className="panel">
+        <PanelTitle labels={labels} kickerKey="audit.activity" titleKey="audit.recent" meta={`${data.audit_log.length} items`} />
+        {data.audit_log.length === 0 ? (
+          <div className="empty-approvals">
+            <ShieldCheck size={22} />
+            <span>{labels.node('audit.empty')}</span>
+          </div>
+        ) : (
+          <div className="audit-list">
+            {data.audit_log.map((entry) => (
+              <article className="approval-card audit-card" key={entry.id}>
+                <div className="approval-head">
+                  <div>
+                    <span className="section-kicker">#{entry.id} {formatDateTime(entry.at)}</span>
+                    <h2>{entry.verb}</h2>
+                  </div>
+                  <span className="readonly-pill"><ShieldCheck size={14} />{labels.node('audit.readOnly')}</span>
+                </div>
+                <div className="approval-meta">
+                  <span><Clock3 size={14} />{formatDateTime(entry.at)}</span>
+                  <span>{labels.node('audit.actor', { actor: entry.actor })}</span>
+                  {entry.trace_id ? <span>{labels.node('audit.trace', { trace: entry.trace_id })}</span> : null}
+                </div>
+                <div className="audit-object">
+                  <span className="section-kicker">{labels.node('audit.object')}</span>
+                  <code>{entry.object}</code>
+                </div>
+                <pre className="approval-payload">{JSON.stringify({ before: entry.before, after: entry.after }, null, 2)}</pre>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
 
 function ApprovalsPage({ labels }: { labels: Labeler }) {
   const state = useApiResource('/api/v1/approvals?status=pending', sampleApprovals)
@@ -994,6 +1083,7 @@ function routeFromPath(pathname: string): RouteState {
   const incident = pathname.match(/^\/incidents\/([^/]+)$/)
   if (incident) return { name: 'incident', id: decodeURIComponent(incident[1]) }
   if (pathname === '/approvals') return { name: 'approvals' }
+  if (pathname === '/audit-log') return { name: 'audit' }
   if (pathname === '/settings/log-sink') return { name: 'settings' }
   return { name: 'overview' }
 }

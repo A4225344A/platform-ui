@@ -560,7 +560,8 @@
 
 .needs-list,
 .posture-list,
-.approval-list {
+.approval-list,
+.audit-list {
   overflow: hidden;
   border: 1px solid var(--color-line);
   border-radius: 9px;
@@ -695,8 +696,26 @@
   font-weight: 800;
 }
 
-.approval-list {
+.approval-list,
+.audit-list {
   display: grid;
+}
+
+.audit-object {
+  display: grid;
+  gap: 7px;
+}
+
+.audit-object code {
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: 7px 9px;
+  color: var(--color-ink-muted);
+  background: var(--color-surface-soft);
+  font: 12px/1.4 var(--font-mono);
 }
 
 .approval-card {

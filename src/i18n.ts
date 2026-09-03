@@ -8,6 +8,7 @@ const resources = {
         operations: 'Operations',
         incidents: 'Incidents',
         reviews: 'Reviews',
+        audit: 'Audit',
         controls: 'Controls',
       },
       chrome: {
@@ -75,6 +76,18 @@ const resources = {
         requestedBy: 'Requested by {{actor}}',
         expires: 'Expires {{time}}',
         readOnlyGuard: 'Read-only view. No approval or production mutation is available from this screen.',
+      },
+      audit: {
+        eyebrow: 'Audit trail',
+        title: 'Control activity',
+        description: 'Recent approval and secret-rotation records are shown as read-only evidence.',
+        activity: 'Activity',
+        recent: 'Recent audit log',
+        empty: 'No audit records',
+        readOnly: 'Read only',
+        actor: 'Actor {{actor}}',
+        trace: 'Trace {{trace}}',
+        object: 'Object',
       },
       incident: {
         eyebrow: 'Incident #{{id}}',
@@ -155,6 +168,7 @@ const resources = {
         operations: '\u71df\u904b\u7e3d\u89bd',
         incidents: '\u4e8b\u6545',
         reviews: '\u5be9\u6838',
+        audit: '\u5be9\u8a08',
         controls: '\u63a7\u5236',
       },
       chrome: {
@@ -222,6 +236,18 @@ const resources = {
         requestedBy: '\u7531 {{actor}} \u5efa\u7acb',
         expires: '\u5230\u671f {{time}}',
         readOnlyGuard: '\u552f\u8b80\u756b\u9762\uff0c\u6b64\u8655\u4e0d\u63d0\u4f9b\u6838\u51c6\u6216\u4fee\u6539\u751f\u7522\u74b0\u5883\u7684\u52d5\u4f5c\u3002',
+      },
+      audit: {
+        eyebrow: '\u5be9\u8a08\u8ecc\u8de1',
+        title: '\u63a7\u5236\u6d3b\u52d5',
+        description: '\u8fd1\u671f\u6838\u51c6\u8207\u5bc6\u9470\u8f2a\u66ff\u8a18\u9304\u4ee5\u552f\u8b80\u8b49\u64da\u5448\u73fe\u3002',
+        activity: '\u6d3b\u52d5',
+        recent: '\u8fd1\u671f\u5be9\u8a08\u65e5\u8a8c',
+        empty: '\u6c92\u6709\u5be9\u8a08\u8a18\u9304',
+        readOnly: '\u552f\u8b80',
+        actor: '\u57f7\u884c\u8005 {{actor}}',
+        trace: 'Trace {{trace}}',
+        object: '\u7269\u4ef6',
       },
       incident: {
         eyebrow: '\u4e8b\u6545 #{{id}}',
