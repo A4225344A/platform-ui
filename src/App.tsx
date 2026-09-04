@@ -1117,11 +1117,8 @@ function IncidentAskBox({ labels, incidentId }: { labels: Labeler; incidentId: n
     setState('pending')
     setError('')
     try {
-      const response = await fetch(`/api/v1/incidents/${incidentId}/ask`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: trimmed }),
-      })
+      // 刻意用 GET:CloudFront 的 /api/* 只允許 GET/HEAD/OPTIONS,POST 會在 edge 層被原生 403 擋掉。
+      const response = await fetch(`/api/v1/incidents/${incidentId}/ask?question=${encodeURIComponent(trimmed)}`)
       if (!response.ok) {
         const detail = await response.text().catch(() => '')
         throw new Error(`HTTP ${response.status}${detail ? ` - ${detail}` : ''}`)
