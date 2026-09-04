@@ -198,6 +198,14 @@ type IncidentDetail = {
   agent_log_url: string | null
 }
 
+type AccuracyStats = {
+  service: string
+  verified: number
+  failed: number
+  notify_only: number
+  remediation_rate: number | null
+}
+
 type LogSink = 'cloudwatch' | 'loki' | 'file'
 
 type AsyncState<T> =
@@ -373,9 +381,11 @@ const sampleIncident: IncidentDetail = {
     { at: '2026-08-28T08:00:05+08:00', step: 'queued', detail: { alert: 'HighErrorRate' } },
     { at: '2026-08-28T08:00:11+08:00', step: 'sanitized', detail: { redacted: true } },
     { at: '2026-08-28T08:00:29+08:00', step: 'evidence_gathered', detail: { metrics: 4, events: 2 } },
-    { at: '2026-08-28T08:01:03+08:00', step: 'judged', detail: { confidence: 0.78, decision: 'notify_only' } },
+    { at: '2026-08-28T08:01:03+08:00', step: 'judged', detail: { action: 'notify_only', reason: 'Error rate elevated but within the service tier policy; escalating to on-call instead of auto-remediating.' } },
   ],
 }
+
+const sampleAccuracy: AccuracyStats = { service: 'auth-api', verified: 0, failed: 0, notify_only: 0, remediation_rate: null }
 
 function App() {
   const [route, setRoute] = useState<RouteState>(() => routeFromPath(window.location.pathname))
@@ -857,6 +867,11 @@ function IncidentPage({ labels, incidentId }: { labels: Labeler; incidentId: str
   const staleAnchorLabel = last ? labels.text(stepKey(last.step)) : labels.text('incident.incidentCreated')
   const sinceLast = secondsSince(staleAnchorAt)
 
+  const fallbackAccuracy = useMemo(() => ({ ...sampleAccuracy, service: data.service }), [data.service])
+  const accuracy = useApiResource(`/api/v1/accuracy?service=${encodeURIComponent(data.service)}`, fallbackAccuracy)
+  const judgedDetail = judgedDetailFromTimeline(data.timeline)
+  const guardDetail = guardDetailFromTimeline(data.timeline)
+
   return (
     <div className="page">
       <PageHeader
@@ -913,12 +928,35 @@ function IncidentPage({ labels, incidentId }: { labels: Labeler; incidentId: str
         <aside className="detail-panel">
           <div className="side-card">
             <span className="section-kicker">{labels.node('incident.aiAssessment')}</span>
+            {judgedDetail ? (
+              <>
+                <div className="assessment-score">
+                  <Sparkles size={20} />
+                  <strong>{labels.node(actionLabelKey(judgedDetail.action))}</strong>
+                </div>
+                <p>{typeof judgedDetail.reason === 'string' ? judgedDetail.reason : labels.node('incident.aiNoReason')}</p>
+              </>
+            ) : (
+              <p>{labels.node('incident.aiNoJudgment')}</p>
+            )}
+          </div>
+
+          <div className="side-card">
+            <span className="section-kicker">{labels.node('incident.guardChecks')}</span>
+            <p>{guardExplanation(labels, guardDetail)}</p>
+          </div>
+
+          <div className="side-card">
+            <span className="section-kicker">{labels.node('incident.trackRecord')}</span>
             <div className="assessment-score">
               <Gauge size={20} />
-              <strong>{confidenceFromTimeline(data.timeline)}</strong>
-              <span>{labels.node('incident.confidence')}</span>
+              <strong>{accuracy.data.remediation_rate !== null ? `${Math.round(accuracy.data.remediation_rate * 100)}%` : 'N/A'}</strong>
             </div>
-            <p>{labels.node('incident.assessmentSource')}</p>
+            {accuracy.data.remediation_rate !== null ? (
+              <p>{labels.node('incident.trackRecordSummary', { verified: accuracy.data.verified, failed: accuracy.data.failed, notifyOnly: accuracy.data.notify_only })}</p>
+            ) : (
+              <p>{labels.node('incident.trackRecordEmpty', { service: data.service })}</p>
+            )}
           </div>
 
           <div className="side-card">
@@ -1443,9 +1481,38 @@ function timelineIcon(step: string) {
   return <Clock3 size={14} />
 }
 
-function confidenceFromTimeline(timeline: TimelineItem[]): string {
+type JudgedDetail = { action?: unknown; reason?: unknown }
+type GuardDetail = {
+  downgraded_by?: unknown
+  tier_policy?: unknown
+  l2_policy?: unknown
+}
+
+function judgedDetailFromTimeline(timeline: TimelineItem[]): JudgedDetail | null {
   const judged = timeline.find((item) => item.step === 'judged')
-  if (!judged || typeof judged.detail !== 'object' || judged.detail === null) return 'N/A'
-  const confidence = (judged.detail as { confidence?: unknown }).confidence
-  return typeof confidence === 'number' ? confidence.toFixed(2) : 'N/A'
+  if (!judged || typeof judged.detail !== 'object' || judged.detail === null) return null
+  return judged.detail as JudgedDetail
+}
+
+function guardDetailFromTimeline(timeline: TimelineItem[]): GuardDetail | null {
+  const guarded = timeline.find((item) => item.step === 'guarded')
+  if (!guarded || typeof guarded.detail !== 'object' || guarded.detail === null) return null
+  return guarded.detail as GuardDetail
+}
+
+function actionLabelKey(action: unknown): string {
+  if (action === 'restart') return 'incident.actionRestart'
+  if (action === 'rollback') return 'incident.actionRollback'
+  return 'incident.actionNotifyOnly'
+}
+
+// 只有五道降級檢查裡「有降級」時才需要解釋給人看;沒降級就是模型判斷照原樣執行。
+function guardExplanation(labels: Labeler, guard: GuardDetail | null): string {
+  if (!guard || !guard.downgraded_by) return labels.text('incident.guardClear')
+  if (typeof guard.tier_policy === 'string' && guard.tier_policy) return guard.tier_policy
+  if (typeof guard.l2_policy === 'string' && guard.l2_policy) return guard.l2_policy
+  if (guard.downgraded_by === 'target_mismatch') return labels.text('incident.guardReasonTargetMismatch')
+  if (guard.downgraded_by === 'human_approval_required') return labels.text('incident.guardReasonHumanApproval')
+  if (guard.downgraded_by === 'circuit_breaker') return labels.text('incident.guardReasonCircuitBreaker')
+  return labels.text('incident.guardReasonUnknown')
 }
