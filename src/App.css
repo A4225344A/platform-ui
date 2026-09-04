@@ -1218,6 +1218,80 @@
   text-decoration: none;
 }
 
+.ask-panel {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--color-line);
+}
+
+.ask-history {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.ask-entry {
+  display: grid;
+  gap: 6px;
+  border-radius: 9px;
+  background: var(--color-surface-soft);
+  padding: 11px 13px;
+}
+
+.ask-question,
+.ask-answer {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-ink);
+}
+
+.ask-question strong,
+.ask-answer strong {
+  color: var(--color-ink-faint);
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.ask-answer {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--color-ink-muted);
+}
+
+.ask-answer svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-accent);
+}
+
+.ask-input-row {
+  display: flex;
+  gap: 9px;
+}
+
+.ask-input-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+  background: var(--color-surface-soft);
+  color: var(--color-ink);
+  padding: 0 12px;
+  font: inherit;
+  outline: none;
+}
+
+.ask-input-row input::placeholder {
+  color: var(--color-ink-faint);
+}
+
+.ask-input-row input:focus {
+  border-color: var(--color-accent);
+}
+
 .detail-panel {
   display: grid;
   gap: 14px;

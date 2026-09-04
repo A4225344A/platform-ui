@@ -923,6 +923,8 @@ function IncidentPage({ labels, incidentId }: { labels: Labeler; incidentId: str
               </div>
             </div>
           )}
+
+          <IncidentAskBox labels={labels} incidentId={data.id} />
         </section>
 
         <aside className="detail-panel">
@@ -1095,6 +1097,78 @@ function NeedRow({ labels, item, navigate }: { labels: Labeler; item: NeedYou; n
       ) : (
         <span className="no-link">{labels.node('common.noRoute')}</span>
       )}
+    </div>
+  )
+}
+
+type AskEntry = { question: string; answer: string }
+
+function IncidentAskBox({ labels, incidentId }: { labels: Labeler; incidentId: number }) {
+  const [question, setQuestion] = useState('')
+  const [entries, setEntries] = useState<AskEntry[]>([])
+  const [state, setState] = useState<'idle' | 'pending' | 'error'>('idle')
+  const [error, setError] = useState('')
+
+  // 只問這一筆事故已存的紀錄——ai-agent 端沒有任何工具呼叫能力,
+  // 這裡不是通用聊天室,問其他事故或即時系統狀態一律問不到。
+  const ask = async () => {
+    const trimmed = question.trim()
+    if (!trimmed || state === 'pending') return
+    setState('pending')
+    setError('')
+    try {
+      const response = await fetch(`/api/v1/incidents/${incidentId}/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: trimmed }),
+      })
+      if (!response.ok) {
+        const detail = await response.text().catch(() => '')
+        throw new Error(`HTTP ${response.status}${detail ? ` - ${detail}` : ''}`)
+      }
+      const body = (await response.json()) as { answer: string }
+      setEntries((prev) => [...prev, { question: trimmed, answer: body.answer }])
+      setQuestion('')
+      setState('idle')
+    } catch (caught) {
+      setState('error')
+      setError(caught instanceof Error ? caught.message : 'Request failed')
+    }
+  }
+
+  return (
+    <div className="ask-panel">
+      <PanelTitle labels={labels} kickerKey="incident.askKicker" titleKey="incident.askTitle" />
+      <p className="muted-note">{labels.node('incident.askScope')}</p>
+
+      {entries.length > 0 && (
+        <div className="ask-history">
+          {entries.map((entry, index) => (
+            <div className="ask-entry" key={index}>
+              <p className="ask-question"><strong>{labels.text('incident.askYou')}</strong> {entry.question}</p>
+              <p className="ask-answer"><Sparkles size={14} /><span><strong>{labels.text('incident.askAgent')}</strong> {entry.answer}</span></p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="ask-input-row">
+        <input
+          type="text"
+          value={question}
+          maxLength={500}
+          placeholder={labels.text('incident.askPlaceholder')}
+          onChange={(event) => setQuestion(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') void ask()
+          }}
+          disabled={state === 'pending'}
+        />
+        <button className="primary-button" type="button" disabled={state === 'pending' || question.trim().length === 0} onClick={() => void ask()}>
+          {labels.node(state === 'pending' ? 'incident.askSending' : 'incident.askSend')}
+        </button>
+      </div>
+      {state === 'error' && <p className="error-message" role="alert"><AlertTriangle size={16} />{error}</p>}
     </div>
   )
 }
