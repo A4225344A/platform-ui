@@ -401,6 +401,58 @@
   padding: 28px 28px 56px;
 }
 
+.skeleton-block {
+  border-radius: 10px;
+  background: linear-gradient(
+    100deg,
+    var(--color-surface-sunk) 40%,
+    color-mix(in srgb, var(--color-surface-sunk) 55%, var(--color-line)) 50%,
+    var(--color-surface-sunk) 60%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-title {
+  width: 220px;
+  height: 16px;
+  margin-bottom: 10px;
+}
+
+.skeleton-line {
+  width: 380px;
+  height: 12px;
+  margin-bottom: 26px;
+}
+
+.skeleton-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.skeleton-panel {
+  height: 120px;
+}
+
+.skeleton-panel.tall {
+  height: 220px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-block {
+    animation: none;
+  }
+}
+
 .page-header {
   display: flex;
   align-items: flex-end;

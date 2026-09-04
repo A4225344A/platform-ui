@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import CssBaseline from '@mui/material/CssBaseline'
 import MuiToggleButton from '@mui/material/ToggleButton'
 import MuiToggleButtonGroup from '@mui/material/ToggleButtonGroup'
@@ -543,6 +544,9 @@ export default App
 
 function AuditLogPage({ labels }: { labels: Labeler }) {
   const state = useApiResource('/api/v1/audit-log?limit=50', sampleAuditLog)
+
+  if (state.status === 'loading') return <PageSkeleton panels={1} />
+
   const data = state.data
 
   return (
@@ -603,6 +607,9 @@ function ApprovalsPage({ labels }: { labels: Labeler }) {
     [approvalStatus],
   )
   const state = useApiResource(`/api/v1/approvals?status=${approvalStatus}`, fallbackApprovals)
+
+  if (state.status === 'loading') return <PageSkeleton panels={2} />
+
   const data = state.data
 
   return (
@@ -694,6 +701,15 @@ function ApprovalsPage({ labels }: { labels: Labeler }) {
 function ExecutionPlanPanel({ labels, approvalId }: { labels: Labeler; approvalId: number }) {
   const fallback = useMemo(() => ({ ...sampleExecutionPlan, approval_id: approvalId }), [approvalId])
   const state = useApiResource(`/api/v1/approvals/${approvalId}/execution-plan`, fallback)
+
+  if (state.status === 'loading') {
+    return (
+      <div className="execution-plan" aria-busy="true" aria-live="polite">
+        <div className="skeleton-block skeleton-panel" />
+      </div>
+    )
+  }
+
   const data = state.data
 
   return (
@@ -752,6 +768,9 @@ function ExecutionPlanPanel({ labels, approvalId }: { labels: Labeler; approvalI
 function OverviewPage({ labels, navigate, windowHours }: { labels: Labeler; navigate: (href: string) => void; windowHours: number }) {
   const state = useApiResource(`/api/v1/overview?window_hours=${windowHours}`, sampleOverview)
   const scorecardState = useApiResource('/api/v1/scorecards/selfheal-readiness/latest', sampleScorecardLatest)
+
+  if (state.status === 'loading') return <PageSkeleton panels={3} />
+
   const data = state.data
   const counters = data.counters
   const scorecard = scorecardState.data
@@ -871,6 +890,8 @@ function IncidentPage({ labels, incidentId }: { labels: Labeler; incidentId: str
   const accuracy = useApiResource(`/api/v1/accuracy?service=${encodeURIComponent(data.service)}`, fallbackAccuracy)
   const judgedDetail = judgedDetailFromTimeline(data.timeline)
   const guardDetail = guardDetailFromTimeline(data.timeline)
+
+  if (state.status === 'loading') return <PageSkeleton panels={2} />
 
   return (
     <div className="page">
@@ -1212,6 +1233,20 @@ function TrendCard({ labels }: { labels: Labeler }) {
   )
 }
 
+function PageSkeleton({ panels = 2 }: { panels?: number }) {
+  return (
+    <div className="page skeleton-page" aria-busy="true" aria-live="polite">
+      <div className="skeleton-block skeleton-title" />
+      <div className="skeleton-block skeleton-line" />
+      <div className="skeleton-grid">
+        {Array.from({ length: panels }, (_, index) => (
+          <div className="skeleton-block skeleton-panel tall" key={index} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function PageHeader({ labels, eyebrowKey, eyebrowOptions, titleKey, titleText, descriptionKey, side }: { labels: Labeler; eyebrowKey: string; eyebrowOptions?: Record<string, unknown>; titleKey?: string; titleText?: string; descriptionKey: string; side?: ReactNode }) {
   return (
     <div className="page-header">
@@ -1427,31 +1462,22 @@ function useStoredState<T extends string>(key: string, fallback: T): [T, (value:
 }
 
 function useApiResource<T>(url: string, fallbackData: T): AsyncState<T> {
-  const [state, setState] = useState<AsyncState<T> & { url: string }>({ status: 'loading', data: fallbackData, error: null, fallback: false, url })
+  const query = useQuery<T, Error>({
+    queryKey: [url],
+    queryFn: async () => {
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      return (await response.json()) as T
+    },
+    staleTime: 15_000,
+  })
 
-  useEffect(() => {
-    let active = true
-    fetch(url)
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`)
-        return (await response.json()) as T
-      })
-      .then((data) => {
-        if (active) setState({ status: 'ready', data, error: null, fallback: false, url })
-      })
-      .catch((caught) => {
-        if (!active) return
-        const message = caught instanceof Error ? caught.message : 'API request failed'
-        setState({ status: 'error', data: fallbackData, error: `${url}: ${message}`, fallback: true, url })
-      })
-
-    return () => {
-      active = false
-    }
-  }, [fallbackData, url])
-
-  if (state.url !== url) return { status: 'loading', data: fallbackData, error: null, fallback: false }
-  return state
+  // query.data survives across mounts (cached by queryKey), so switching tabs and
+  // back shows the last known-good payload immediately instead of replaying the
+  // fallback-sample -> real-data swap that used to cause the visible flicker.
+  if (query.data !== undefined) return { status: 'ready', data: query.data, error: null, fallback: false }
+  if (query.isError) return { status: 'error', data: fallbackData, error: `${url}: ${query.error.message}`, fallback: true }
+  return { status: 'loading', data: fallbackData, error: null, fallback: false }
 }
 
 function useApiHealth(): boolean | null {
