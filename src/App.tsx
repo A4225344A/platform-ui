@@ -259,8 +259,6 @@ const logSinkOptions: readonly {
   },
 ]
 
-const trendPoints = [42, 46, 44, 55, 49, 63, 58, 67, 61, 74, 70, 78]
-
 const sampleOverview: OverviewData = {
   counters_computed_at: '2026-08-28T11:31:04Z',
   window_hours: 24,
@@ -810,7 +808,6 @@ function OverviewPage({ labels, navigate, windowHours }: { labels: Labeler; navi
           <p>{labels.node('overview.l0Description')}</p>
           {counters.l0_absorbed_is_estimate && <span className="estimate-label">{labels.node('common.estimated')}</span>}
         </div>
-        <TrendCard labels={labels} />
       </section>
 
       <div className="work-grid">
@@ -1250,29 +1247,6 @@ function TimelineStep({ labels, item }: { labels: Labeler; item: TimelineItem })
 
 function MetricCard({ labels, labelKey, value, captionKey, captionOptions, tone }: { labels: Labeler; labelKey: string; value: string; captionKey: string; captionOptions?: Record<string, unknown>; tone: Tone }) {
   return <div className={`metric-card ${tone}`}><span>{labels.node(labelKey)}</span><strong>{value}</strong><small>{labels.node(captionKey, captionOptions)}</small></div>
-}
-
-function TrendCard({ labels }: { labels: Labeler }) {
-  const path = trendPoints
-    .map((point, index) => {
-      const x = (index / (trendPoints.length - 1)) * 220
-      const y = 90 - ((point - 40) / 40) * 74
-      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
-    })
-    .join(' ')
-
-  return (
-    <div className="trend-card">
-      <div className="trend-head">
-        <div><span className="section-kicker">{labels.node('overview.reliabilityTrend')}</span><strong>MTTR -18%</strong></div>
-        <span className="status-pill verified">{labels.node('overview.improving')}</span>
-      </div>
-      <svg viewBox="0 0 220 96" role="img" aria-label="Reliability trend">
-        <path d={`${path} L 220 96 L 0 96 Z`} className="trend-fill" />
-        <path d={path} className="trend-line" />
-      </svg>
-    </div>
-  )
 }
 
 function PageSkeleton({ panels = 2 }: { panels?: number }) {
