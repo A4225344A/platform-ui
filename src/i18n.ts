@@ -58,6 +58,11 @@ const resources = {
         incidentActivity: 'Incident Activity',
         recentIncidents: 'Recent incidents',
         synced: 'Synced {{time}}',
+        filterByStatus: 'Filter by status',
+        filterByService: 'Filter by service',
+        allStatuses: 'All statuses',
+        allServices: 'All services',
+        noMatchingWork: 'No items match this filter',
       },
       needs: {
         remediation: 'Rollback approval',
@@ -262,6 +267,11 @@ const resources = {
         incidentActivity: '\u4e8b\u6545\u6d3b\u52d5',
         recentIncidents: '\u8fd1\u671f\u4e8b\u6545',
         synced: '\u540c\u6b65\u65bc {{time}}',
+        filterByStatus: '\u4f9d\u72c0\u614b\u7be9\u9078',
+        filterByService: '\u4f9d\u670d\u52d9\u7be9\u9078',
+        allStatuses: '\u5168\u90e8\u72c0\u614b',
+        allServices: '\u5168\u90e8\u670d\u52d9',
+        noMatchingWork: '\u6c92\u6709\u7b26\u5408\u7be9\u9078\u689d\u4ef6\u7684\u9805\u76ee',
       },
       needs: {
         remediation: '\u56de\u6efe\u6838\u51c6',

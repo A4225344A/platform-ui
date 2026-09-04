@@ -768,6 +768,8 @@ function ExecutionPlanPanel({ labels, approvalId }: { labels: Labeler; approvalI
 function OverviewPage({ labels, navigate, windowHours }: { labels: Labeler; navigate: (href: string) => void; windowHours: number }) {
   const state = useApiResource(`/api/v1/overview?window_hours=${windowHours}`, sampleOverview)
   const scorecardState = useApiResource('/api/v1/scorecards/selfheal-readiness/latest', sampleScorecardLatest)
+  const [needsKind, setNeedsKind] = useState('all')
+  const [needsService, setNeedsService] = useState('all')
 
   if (state.status === 'loading') return <PageSkeleton panels={3} />
 
@@ -775,6 +777,13 @@ function OverviewPage({ labels, navigate, windowHours }: { labels: Labeler; navi
   const counters = data.counters
   const scorecard = scorecardState.data
   const windowLabel = windowHours >= 24 && windowHours % 24 === 0 ? `${windowHours / 24}d` : `${windowHours}h`
+  const needsKindOptions = Array.from(new Set(data.needs_you.map((item) => item.kind)))
+  const needsServiceOptions = Array.from(
+    new Set(data.needs_you.map((item) => item.service).filter((service): service is string => service !== null)),
+  )
+  const filteredNeeds = data.needs_you.filter(
+    (item) => (needsKind === 'all' || item.kind === needsKind) && (needsService === 'all' || item.service === needsService),
+  )
 
   return (
     <div className="page">
@@ -806,11 +815,44 @@ function OverviewPage({ labels, navigate, windowHours }: { labels: Labeler; navi
 
       <div className="work-grid">
         <section className="panel">
-          <PanelTitle labels={labels} kickerKey="overview.actionQueue" titleKey="overview.openWork" meta={`${data.needs_you.length} items`} />
+          <div className="needs-toolbar">
+            <PanelTitle labels={labels} kickerKey="overview.actionQueue" titleKey="overview.openWork" meta={`${filteredNeeds.length} items`} />
+            <div className="needs-filters">
+              <select
+                className="needs-filter-select"
+                aria-label={labels.text('overview.filterByStatus')}
+                value={needsKind}
+                onChange={(event) => setNeedsKind(event.target.value)}
+              >
+                <option value="all">{labels.text('overview.allStatuses')}</option>
+                {needsKindOptions.map((kind) => (
+                  <option key={kind} value={kind}>{labels.text(needLabelKeys[kind]?.key ?? kind)}</option>
+                ))}
+              </select>
+              <select
+                className="needs-filter-select"
+                aria-label={labels.text('overview.filterByService')}
+                value={needsService}
+                onChange={(event) => setNeedsService(event.target.value)}
+              >
+                <option value="all">{labels.text('overview.allServices')}</option>
+                {needsServiceOptions.map((service) => (
+                  <option key={service} value={service}>{service}</option>
+                ))}
+              </select>
+            </div>
+          </div>
           <div className="needs-list">
-            {data.needs_you.map((item) => (
-              <NeedRow labels={labels} item={item} key={`${item.kind}:${item.id ?? item.service ?? 'global'}`} navigate={navigate} />
-            ))}
+            {filteredNeeds.length === 0 ? (
+              <div className="empty-approvals">
+                <ShieldCheck size={22} />
+                <span>{labels.node('overview.noMatchingWork')}</span>
+              </div>
+            ) : (
+              filteredNeeds.map((item) => (
+                <NeedRow labels={labels} item={item} key={`${item.kind}:${item.id ?? item.service ?? 'global'}`} navigate={navigate} />
+              ))
+            )}
           </div>
         </section>
 
