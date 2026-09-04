@@ -259,6 +259,9 @@ const logSinkOptions: readonly {
   },
 ]
 
+// MTTR 趨勢圖用的假資料，先不做（見 TrendCard 定義處的說明），跟著元件一起註解掉。
+// const trendPoints = [42, 46, 44, 55, 49, 63, 58, 67, 61, 74, 70, 78]
+
 const sampleOverview: OverviewData = {
   counters_computed_at: '2026-08-28T11:31:04Z',
   window_hours: 24,
@@ -808,6 +811,12 @@ function OverviewPage({ labels, navigate, windowHours }: { labels: Labeler; navi
           <p>{labels.node('overview.l0Description')}</p>
           {counters.l0_absorbed_is_estimate && <span className="estimate-label">{labels.node('common.estimated')}</span>}
         </div>
+        {/* MTTR 趨勢圖（TrendCard）先不做：後端目前沒有任何 MTTR 計算依據
+            （remediation_log 有時間戳記，但從未聚合成時間序列），要做到真的
+            得先定義 MTTR 怎麼算、抓多長窗口，這是超出當前修復範圍的新功能，
+            決定先保留元件/資料結構、註解掉渲染，等之後真的要做 MTTR 時再打開，
+            不要用假數字充版面。 */}
+        {/* <TrendCard labels={labels} /> */}
       </section>
 
       <div className="work-grid">
@@ -1248,6 +1257,39 @@ function TimelineStep({ labels, item }: { labels: Labeler; item: TimelineItem })
 function MetricCard({ labels, labelKey, value, captionKey, captionOptions, tone }: { labels: Labeler; labelKey: string; value: string; captionKey: string; captionOptions?: Record<string, unknown>; tone: Tone }) {
   return <div className={`metric-card ${tone}`}><span>{labels.node(labelKey)}</span><strong>{value}</strong><small>{labels.node(captionKey, captionOptions)}</small></div>
 }
+
+// TrendCard 先不做：這張卡片畫的是完全寫死的 12 點折線加一個固定的 "MTTR -18%"
+// 字串，不管系統實際狀態如何都是同一組數字，跟 scorecard 之前那個 stub 是同一類
+// 問題。差別是後端目前完全沒有 MTTR 的計算依據（remediation_log 有 created_at/
+// verified，但沒人算過任何時間序列），要做到真的等於是要生一個新的分析端點，
+// 超出這次「補起來」的範圍。決定先保留元件/資料結構、註解掉不渲染，之後真的
+// 要做 MTTR 趨勢時再打開，而不是留著顯示假資料。用到時記得同步打開
+// App.css 裡的 .trend-card / .trend-head / .trend-line / .trend-fill，
+// 以及 i18n.ts 裡的 overview.reliabilityTrend / overview.improving，
+// 並把 .hero-panel 的 grid-template-columns 改回 minmax(0, 1fr) 320px。
+//
+// function TrendCard({ labels }: { labels: Labeler }) {
+//   const path = trendPoints
+//     .map((point, index) => {
+//       const x = (index / (trendPoints.length - 1)) * 220
+//       const y = 90 - ((point - 40) / 40) * 74
+//       return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
+//     })
+//     .join(' ')
+//
+//   return (
+//     <div className="trend-card">
+//       <div className="trend-head">
+//         <div><span className="section-kicker">{labels.node('overview.reliabilityTrend')}</span><strong>MTTR -18%</strong></div>
+//         <span className="status-pill verified">{labels.node('overview.improving')}</span>
+//       </div>
+//       <svg viewBox="0 0 220 96" role="img" aria-label="Reliability trend">
+//         <path d={`${path} L 220 96 L 0 96 Z`} className="trend-fill" />
+//         <path d={path} className="trend-line" />
+//       </svg>
+//     </div>
+//   )
+// }
 
 function PageSkeleton({ panels = 2 }: { panels?: number }) {
   return (

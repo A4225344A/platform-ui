@@ -570,6 +570,8 @@
 
 .hero-panel {
   display: grid;
+  /* MTTR 趨勢圖（TrendCard）先不做，見 App.tsx 裡的說明，所以這裡先用單欄。
+     之後要打開 TrendCard 時，這裡要改回 minmax(0, 1fr) 320px 兩欄。 */
   grid-template-columns: 1fr;
   gap: 18px;
   margin-bottom: 14px;
@@ -609,6 +611,50 @@
   font-weight: 800;
   white-space: nowrap;
 }
+
+/* TrendCard（MTTR 趨勢圖）先不做，見 App.tsx 裡 TrendCard 定義處的說明。
+   跟元件一起註解，之後要打開 TrendCard 時把這些一起打開。
+
+.trend-card {
+  min-width: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-surface-soft);
+  padding: 14px;
+}
+
+.trend-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trend-head strong {
+  display: block;
+  margin-top: 6px;
+  font: 800 22px/1 var(--font-mono);
+}
+
+.trend-card svg {
+  width: 100%;
+  height: 112px;
+  margin-top: 8px;
+}
+
+.trend-line {
+  fill: none;
+  stroke: var(--color-chart);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trend-fill {
+  fill: var(--color-chart-fill);
+}
+
+*/
 
 .work-grid {
   display: grid;

@@ -48,6 +48,9 @@ const resources = {
         manualReview: 'Manual review',
         l0Title: 'restarts absorbed before escalation',
         l0Description: 'Estimated from business deployment restarts and catalog incidents. No ratio is shown.',
+        // TrendCard 先不做（見 App.tsx），這兩個鍵只有它用得到，先跟著註解掉：
+        // reliabilityTrend: 'Reliability trend',
+        // improving: 'Improving',
         actionQueue: 'Action Queue',
         openWork: 'Open work',
         serviceCatalog: 'Service Catalog',
@@ -255,6 +258,9 @@ const resources = {
         manualReview: '\u4eba\u5de5\u6aa2\u67e5',
         l0Title: '\u6b21\u91cd\u555f\u5728\u5347\u7d1a\u524d\u88ab\u5438\u6536',
         l0Description: '\u4f86\u81ea\u696d\u52d9 deployment \u91cd\u555f\u8207\u76ee\u9304\u4e8b\u6545\u7684\u4f30\u8a08\uff0c\u4e0d\u986f\u793a\u4e0d\u8aa0\u5be6\u7684\u6bd4\u7387\u3002',
+        // TrendCard \u5148\u4e0d\u505a\uff08\u898b App.tsx\uff09\uff0c\u9019\u5169\u500b\u9375\u53ea\u6709\u5b83\u7528\u5f97\u5230\uff0c\u5148\u8ddf\u8457\u8a3b\u89e3\u6389\uff1a
+        // reliabilityTrend: '\u53ef\u9760\u5ea6\u8da8\u52e2',
+        // improving: '\u6539\u5584\u4e2d',
         actionQueue: '\u5de5\u4f5c\u4f47\u5217',
         openWork: '\u5f85\u8655\u7406\u5de5\u4f5c',
         serviceCatalog: '\u670d\u52d9\u76ee\u9304',
