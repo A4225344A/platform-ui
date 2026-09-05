@@ -39,6 +39,7 @@ type RouteState =
   | { name: 'approvals' }
   | { name: 'audit' }
   | { name: 'settings' }
+  | { name: 'services' }
 
 type LanguageMode = 'en' | 'zh' | 'both'
 type ThemeMode = 'light' | 'dark'
@@ -64,6 +65,8 @@ type NeedYou = {
   action: string | null
   waiting_seconds: number | null
   href: string | null
+  owner_team: string | null
+  owner_email: string | null
 }
 
 type RecentIncident = {
@@ -87,6 +90,24 @@ type SearchServiceResult = {
   display_name: string | null
   owner_team: string | null
   owner_email: string | null
+}
+
+type ServiceCatalogEntry = {
+  service: string
+  display_name: string | null
+  owner_team: string | null
+  owner_email: string | null
+  escalation_email: string | null
+  tier: number | null
+  auto_remediate: boolean | null
+  runbook_url: string | null
+  last_deploy_at: string | null
+  depends_on: string[] | null
+  log_url: string | null
+}
+
+type ServiceCatalogList = {
+  services: ServiceCatalogEntry[]
 }
 
 type SearchIncidentResult = {
@@ -197,6 +218,9 @@ type IncidentDetail = {
   timeline: TimelineItem[]
   timeline_stale: boolean
   agent_log_url: string | null
+  owner_team: string | null
+  owner_email: string | null
+  escalation_email: string | null
 }
 
 type AccuracyStats = {
@@ -210,9 +234,9 @@ type AccuracyStats = {
 type LogSink = 'cloudwatch' | 'loki' | 'file'
 
 type AsyncState<T> =
-  | { status: 'loading'; data: T; error: null; fallback: boolean }
-  | { status: 'ready'; data: T; error: null; fallback: boolean }
-  | { status: 'error'; data: T; error: string; fallback: true }
+  | { status: 'loading'; data: T; error: null; fallback: boolean; source: string }
+  | { status: 'ready'; data: T; error: null; fallback: boolean; source: string }
+  | { status: 'error'; data: T; error: string; fallback: true; source: string }
 
 type Labeler = {
   mode: LanguageMode
@@ -277,10 +301,10 @@ const sampleOverview: OverviewData = {
     skipped_cooldown: 2,
   },
   needs_you: [
-    { id: 41, kind: 'remediation', service: 'payments-api', action: 'rollback', waiting_seconds: 720, href: '/incidents/922' },
-    { id: 922, kind: 'timeline_stale', service: 'auth-api', action: null, waiting_seconds: 420, href: '/incidents/922' },
-    { id: 12, kind: 'policy_change', service: null, action: 'log_sink', waiting_seconds: 60, href: '/approvals' },
-    { id: null, kind: 'catalog_gap', service: 'billing-api', action: null, waiting_seconds: null, href: null },
+    { id: 41, kind: 'remediation', service: 'payments-api', action: 'rollback', waiting_seconds: 720, href: '/incidents/922', owner_team: 'payments-core', owner_email: 'payments-oncall@example.com' },
+    { id: 922, kind: 'timeline_stale', service: 'auth-api', action: null, waiting_seconds: 420, href: '/incidents/922', owner_team: 'identity-team', owner_email: 'identity-oncall@example.com' },
+    { id: 12, kind: 'policy_change', service: null, action: 'log_sink', waiting_seconds: 60, href: '/approvals', owner_team: null, owner_email: null },
+    { id: null, kind: 'catalog_gap', service: 'billing-api', action: null, waiting_seconds: null, href: null, owner_team: null, owner_email: null },
   ],
   recent: [
     { id: 922, service: 'auth-api', alertname: 'HighErrorRate', status: 'running', started_at: '2026-08-28T08:00:00+08:00' },
@@ -379,15 +403,65 @@ const sampleIncident: IncidentDetail = {
   started_at: '2026-08-28T08:00:00+08:00',
   timeline_stale: true,
   agent_log_url: null,
+  owner_team: 'identity-team',
+  owner_email: 'identity-oncall@example.com',
+  escalation_email: 'identity-escalate@example.com',
   timeline: [
-    { at: '2026-08-28T08:00:05+08:00', step: 'queued', detail: { alert: 'HighErrorRate' } },
-    { at: '2026-08-28T08:00:11+08:00', step: 'sanitized', detail: { redacted: true } },
-    { at: '2026-08-28T08:00:29+08:00', step: 'evidence_gathered', detail: { metrics: 4, events: 2 } },
-    { at: '2026-08-28T08:01:03+08:00', step: 'judged', detail: { action: 'notify_only', reason: 'Error rate elevated but within the service tier policy; escalating to on-call instead of auto-remediating.' } },
+    { at: '2026-08-28T08:00:05+08:00', step: 'queued', detail: { cooldown: false, group_dedup: true, tier: 2, auto_remediate: true } },
+    { at: '2026-08-28T08:00:11+08:00', step: 'sanitized', detail: { entities_masked: 2, protected_resource_matches: 0, masked_spans: [], excerpt: 'HighErrorRate on auth-api: 5xx rate 12% over the last 5 minutes.', log_query_url: null } },
+    { at: '2026-08-28T08:00:18+08:00', step: 'evidence_gathered', detail: { node: { ready: true }, deps: { orders_api: 'healthy' }, hpa: null } },
+    { at: '2026-08-28T08:00:29+08:00', step: 'retrieved', detail: { keyword_query: 'HighErrorRate auth-api', hit_count: 1, hits: [{ service: 'auth-api', summary: 'HighErrorRate after deploy', resolution: 'notify_only, self-resolved', score: 0.8123 }] } },
+    { at: '2026-08-28T08:01:03+08:00', step: 'judged', detail: { model: 'jp.anthropic.claude-haiku-4-5-20251001-v1:0', input_tokens: 812, output_tokens: 96, cost_usd: 0.0021, action: 'notify_only', reason: 'Error rate elevated but within the service tier policy; escalating to on-call instead of auto-remediating.' } },
+    { at: '2026-08-28T08:01:05+08:00', step: 'guarded', detail: { target_match: true, l2_policy: null, tier_policy: null, human_approval_required: true, circuit_open: false, still_firing: true, downgraded_to: 'notify_only', downgraded_by: 'human_approval_required' } },
+    { at: '2026-08-28T08:01:06+08:00', step: 'written_back', detail: { outcome: 'notify_only', in_rag: false } },
   ],
 }
 
 const sampleAccuracy: AccuracyStats = { service: 'auth-api', verified: 0, failed: 0, notify_only: 0, remediation_rate: null }
+
+const sampleServiceCatalog: ServiceCatalogList = {
+  services: [
+    {
+      service: 'orders-api',
+      display_name: 'Orders API',
+      owner_team: 'platform-core',
+      owner_email: 'core@example.com',
+      escalation_email: 'core-escalate@example.com',
+      tier: 1,
+      auto_remediate: true,
+      runbook_url: 'https://runbooks.example.com/orders-api',
+      last_deploy_at: '2026-08-27T09:12:00+08:00',
+      depends_on: ['payments-api'],
+      log_url: 'https://logs.example.com/search?service=orders-api',
+    },
+    {
+      service: 'payments-api',
+      display_name: 'Payments API',
+      owner_team: 'payments-core',
+      owner_email: 'payments-oncall@example.com',
+      escalation_email: 'payments-escalate@example.com',
+      tier: 1,
+      auto_remediate: false,
+      runbook_url: 'https://runbooks.example.com/payments-api',
+      last_deploy_at: '2026-08-26T14:03:00+08:00',
+      depends_on: [],
+      log_url: 'https://logs.example.com/search?service=payments-api',
+    },
+    {
+      service: 'auth-api',
+      display_name: 'Auth API',
+      owner_team: 'identity-team',
+      owner_email: 'identity-oncall@example.com',
+      escalation_email: null,
+      tier: 2,
+      auto_remediate: true,
+      runbook_url: null,
+      last_deploy_at: null,
+      depends_on: ['orders-api'],
+      log_url: null,
+    },
+  ],
+}
 
 function App() {
   const [route, setRoute] = useState<RouteState>(() => routeFromPath(window.location.pathname))
@@ -397,7 +471,7 @@ function App() {
   const [operatorName, setOperatorName] = useStoredState<string>('engops-operator-name', 'lab-ui')
   const [windowHours, setWindowHours] = useState(24)
   const apiHealthy = useApiHealth()
-  const sidebarScorecard = useApiResource('/api/v1/scorecards/selfheal-readiness/latest', sampleScorecardLatest)
+  const sidebarScorecard = useApiResource('/api/v1/scorecards/selfheal-readiness/latest', sampleScorecardLatest, 'sources.scorecard')
   const labels = useLabels(language)
   const muiTheme = useMemo(
     () =>
@@ -457,6 +531,7 @@ function App() {
         <nav className="nav-list" aria-label="Primary navigation">
           <NavButton active={route.name === 'overview'} icon={LayoutDashboard} label={labels.node('nav.operations')} onClick={() => navigate('/')} />
           <NavButton active={route.name === 'incident'} icon={AlertTriangle} label={labels.node('nav.incidents')} onClick={() => navigate('/incidents/922')} />
+          <NavButton active={route.name === 'services'} icon={Server} label={labels.node('nav.services')} onClick={() => navigate('/services')} />
           <NavButton active={route.name === 'approvals'} icon={GitPullRequest} label={labels.node('nav.reviews')} onClick={() => navigate('/approvals')} />
           <NavButton active={route.name === 'audit'} icon={ScrollText} label={labels.node('nav.audit')} onClick={() => navigate('/audit-log')} />
           <NavButton active={route.name === 'settings'} icon={Settings2} label={labels.node('nav.controls')} onClick={() => navigate('/settings/log-sink')} />
@@ -470,10 +545,10 @@ function App() {
         </div>
 
         <div className="sidebar-footer">
-          <div className="health-chip" title={apiHealthy === false ? labels.text('common.apiUnavailable') : undefined}>
+          <div className="health-chip" title={apiHealthy === false ? labels.text('chrome.dependenciesUnavailable') : undefined}>
             <span className={`live-dot${apiHealthy === false ? ' down' : apiHealthy === null ? ' pending' : ''}`} />
             <span>API</span>
-            <code>/api/v1</code>
+            <code>/readyz</code>
           </div>
           <button
             className="operator"
@@ -532,6 +607,7 @@ function App() {
 
         {route.name === 'overview' && <OverviewPage labels={labels} navigate={navigate} windowHours={windowHours} />}
         {route.name === 'incident' && <IncidentPage labels={labels} incidentId={route.id} />}
+        {route.name === 'services' && <ServiceCatalogPage labels={labels} />}
         {route.name === 'approvals' && <ApprovalsPage labels={labels} />}
         {route.name === 'audit' && <AuditLogPage labels={labels} />}
         {route.name === 'settings' && <SettingsPage labels={labels} />}
@@ -543,8 +619,79 @@ function App() {
 
 export default App
 
+function ServiceCatalogPage({ labels }: { labels: Labeler }) {
+  const state = useApiResource('/api/v1/service-catalog', sampleServiceCatalog, 'sources.serviceCatalog')
+
+  if (state.status === 'loading') return <PageSkeleton panels={1} />
+
+  const data = state.data
+
+  return (
+    <div className="page">
+      <PageHeader
+        labels={labels}
+        eyebrowKey="services.eyebrow"
+        titleKey="services.title"
+        descriptionKey="services.description"
+        side={<ApiBadge labels={labels} state={state} />}
+      />
+
+      <section className="panel table-panel">
+        <PanelTitle labels={labels} kickerKey="services.catalogKicker" titleKey="services.catalogTitle" meta={`${data.services.length} items`} />
+        <div className="recent-table service-table" aria-label="Monitored services">
+          <div className="table-row table-head">
+            <span>{labels.node('common.service')}</span>
+            <span>{labels.node('services.owner')}</span>
+            <span>{labels.node('services.tier')}</span>
+            <span>{labels.node('services.autoRemediate')}</span>
+            <span>{labels.node('services.dependsOn')}</span>
+            <span>{labels.node('services.links')}</span>
+          </div>
+          {data.services.map((service) => (
+            <div className="table-row" key={service.service}>
+              <span>
+                <strong>{service.display_name ?? service.service}</strong>
+                <small className="mono">{service.service}</small>
+              </span>
+              <span>
+                {service.owner_team ? (
+                  <>
+                    <strong>{service.owner_team}</strong>
+                    {service.owner_email ? <small>{service.owner_email}</small> : null}
+                  </>
+                ) : (
+                  <small>{labels.node('services.noOwner')}</small>
+                )}
+              </span>
+              <span>{service.tier ?? labels.node('common.unknown')}</span>
+              <span>{service.auto_remediate === null ? labels.node('common.unknown') : labels.node(service.auto_remediate ? 'common.yes' : 'common.no')}</span>
+              <span>
+                {service.depends_on && service.depends_on.length > 0 ? (
+                  <div className="dep-chip-list">
+                    {service.depends_on.map((dep) => <code className="dep-chip" key={dep}>{dep}</code>)}
+                  </div>
+                ) : (
+                  <small>—</small>
+                )}
+              </span>
+              <span className="service-links">
+                {service.runbook_url ? (
+                  <a href={service.runbook_url} target="_blank" rel="noreferrer">Runbook<ArrowUpRight size={12} /></a>
+                ) : (
+                  <small>{labels.node('services.noRunbook')}</small>
+                )}
+                {service.log_url ? <a href={service.log_url} target="_blank" rel="noreferrer">Logs<ArrowUpRight size={12} /></a> : null}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function AuditLogPage({ labels }: { labels: Labeler }) {
-  const state = useApiResource('/api/v1/audit-log?limit=50', sampleAuditLog)
+  const state = useApiResource('/api/v1/audit-log?limit=50', sampleAuditLog, 'sources.auditLog')
 
   if (state.status === 'loading') return <PageSkeleton panels={1} />
 
@@ -607,7 +754,7 @@ function ApprovalsPage({ labels }: { labels: Labeler }) {
     }),
     [approvalStatus],
   )
-  const state = useApiResource(`/api/v1/approvals?status=${approvalStatus}`, fallbackApprovals)
+  const state = useApiResource(`/api/v1/approvals?status=${approvalStatus}`, fallbackApprovals, 'sources.approvalQueue')
 
   if (state.status === 'loading') return <PageSkeleton panels={2} />
 
@@ -701,7 +848,7 @@ function ApprovalsPage({ labels }: { labels: Labeler }) {
 
 function ExecutionPlanPanel({ labels, approvalId }: { labels: Labeler; approvalId: number }) {
   const fallback = useMemo(() => ({ ...sampleExecutionPlan, approval_id: approvalId }), [approvalId])
-  const state = useApiResource(`/api/v1/approvals/${approvalId}/execution-plan`, fallback)
+  const state = useApiResource(`/api/v1/approvals/${approvalId}/execution-plan`, fallback, 'sources.executionPlan')
 
   if (state.status === 'loading') {
     return (
@@ -767,8 +914,8 @@ function ExecutionPlanPanel({ labels, approvalId }: { labels: Labeler; approvalI
 }
 
 function OverviewPage({ labels, navigate, windowHours }: { labels: Labeler; navigate: (href: string) => void; windowHours: number }) {
-  const state = useApiResource(`/api/v1/overview?window_hours=${windowHours}`, sampleOverview)
-  const scorecardState = useApiResource('/api/v1/scorecards/selfheal-readiness/latest', sampleScorecardLatest)
+  const state = useApiResource(`/api/v1/overview?window_hours=${windowHours}`, sampleOverview, 'sources.overview')
+  const scorecardState = useApiResource('/api/v1/scorecards/selfheal-readiness/latest', sampleScorecardLatest, 'sources.scorecard')
   const [needsKind, setNeedsKind] = useState('all')
   const [needsService, setNeedsService] = useState('all')
 
@@ -927,7 +1074,7 @@ function IncidentPage({ labels, incidentId }: { labels: Labeler; incidentId: str
     () => ({ ...sampleIncident, id: Number.parseInt(incidentId, 10) || sampleIncident.id }),
     [incidentId],
   )
-  const state = useApiResource(`/api/v1/incidents/${encodeURIComponent(incidentId)}`, fallbackIncident)
+  const state = useApiResource(`/api/v1/incidents/${encodeURIComponent(incidentId)}`, fallbackIncident, 'sources.incidentDetail')
   const data = state.data
   const last = data.timeline.length > 0 ? data.timeline[data.timeline.length - 1] : null
   const staleAnchorAt = last?.at ?? data.started_at
@@ -935,7 +1082,7 @@ function IncidentPage({ labels, incidentId }: { labels: Labeler; incidentId: str
   const sinceLast = secondsSince(staleAnchorAt)
 
   const fallbackAccuracy = useMemo(() => ({ ...sampleAccuracy, service: data.service }), [data.service])
-  const accuracy = useApiResource(`/api/v1/accuracy?service=${encodeURIComponent(data.service)}`, fallbackAccuracy)
+  const accuracy = useApiResource(`/api/v1/accuracy?service=${encodeURIComponent(data.service)}`, fallbackAccuracy, 'sources.accuracy')
   const judgedDetail = judgedDetailFromTimeline(data.timeline)
   const guardDetail = guardDetailFromTimeline(data.timeline)
 
@@ -997,6 +1144,19 @@ function IncidentPage({ labels, incidentId }: { labels: Labeler; incidentId: str
         </section>
 
         <aside className="detail-panel">
+          <div className="side-card">
+            <span className="section-kicker">{labels.node('incident.ownership')}</span>
+            {data.owner_team ? (
+              <>
+                <strong>{data.owner_team}</strong>
+                {data.owner_email ? <p><a href={`mailto:${data.owner_email}`}>{data.owner_email}</a></p> : null}
+                {data.escalation_email ? <p>{labels.node('incident.escalationContact', { email: data.escalation_email })}</p> : null}
+              </>
+            ) : (
+              <p>{labels.node('incident.ownerUnknown')}</p>
+            )}
+          </div>
+
           <div className="side-card">
             <span className="section-kicker">{labels.node('incident.aiAssessment')}</span>
             {judgedDetail ? (
@@ -1159,6 +1319,7 @@ function NeedRow({ labels, item, navigate }: { labels: Labeler; item: NeedYou; n
       <div>
         <strong>{item.service ?? labels.text('needs.globalControl')}</strong>
         <small>{item.action ?? labels.text('needs.noPayload')}</small>
+        {item.owner_team ? <small className="need-owner">{item.owner_team}</small> : null}
       </div>
       <span className="waiting">{fmtDur(item.waiting_seconds, labels)}</span>
       {item.href ? (
@@ -1234,12 +1395,15 @@ function IncidentAskBox({ labels, incidentId }: { labels: Labeler; incidentId: n
           {labels.node(state === 'pending' ? 'incident.askSending' : 'incident.askSend')}
         </button>
       </div>
-      {state === 'error' && <p className="error-message" role="alert"><AlertTriangle size={16} />{error}</p>}
+      {state === 'error' && <p className="error-message" role="alert"><AlertTriangle size={16} />{labels.node('incident.askFailed', { error })}</p>}
     </div>
   )
 }
 
 function TimelineStep({ labels, item }: { labels: Labeler; item: TimelineItem }) {
+  const [showRaw, setShowRaw] = useState(false)
+  const humanized = humanizeStepDetail(labels, item.step, item.detail)
+
   return (
     <div className="timeline-item">
       <div className="timeline-marker">{timelineIcon(item.step)}</div>
@@ -1248,7 +1412,19 @@ function TimelineStep({ labels, item }: { labels: Labeler; item: TimelineItem })
           <strong>{labels.node(stepKey(item.step))}</strong>
           <time>{formatDateTime(item.at)}</time>
         </div>
-        <p>{detailToText(item.detail)}</p>
+        <p>{humanized.summary}</p>
+        {humanized.badges.length > 0 && (
+          <div className="timeline-badges">
+            {humanized.badges.map((badge, index) => (
+              <span className="timeline-badge" key={`${badge.label}:${index}`}><strong>{badge.label}</strong>{badge.value}</span>
+            ))}
+          </div>
+        )}
+        {humanized.excerpt ? <p className="timeline-excerpt">{humanized.excerpt}</p> : null}
+        <button type="button" className="link-button raw-toggle" onClick={() => setShowRaw((value) => !value)} aria-expanded={showRaw}>
+          {labels.node(showRaw ? 'stepDetails.hideRaw' : 'stepDetails.viewRaw')}
+        </button>
+        {showRaw && <pre className="approval-payload">{JSON.stringify(item.detail, null, 2)}</pre>}
       </div>
     </div>
   )
@@ -1329,7 +1505,7 @@ function PanelTitle({ labels, kickerKey, titleKey, meta }: { labels: Labeler; ki
 
 function ApiBadge<T>({ labels, state }: { labels: Labeler; state: AsyncState<T> }) {
   if (state.status === 'loading') return <span className="api-badge loading"><Radio size={14} />{labels.node('common.syncing')}</span>
-  if (state.fallback) return <span className="api-badge warning" title={state.error ?? undefined}><AlertTriangle size={14} />{labels.node('common.apiUnavailable')}</span>
+  if (state.fallback) return <span className="api-badge warning" title={state.error ?? undefined}><AlertTriangle size={14} />{labels.node(state.source)}</span>
   return <span className="api-badge ready"><CheckCircle2 size={14} />{labels.node('common.liveData')}</span>
 }
 
@@ -1519,7 +1695,7 @@ function useStoredState<T extends string>(key: string, fallback: T): [T, (value:
   return [value, update]
 }
 
-function useApiResource<T>(url: string, fallbackData: T): AsyncState<T> {
+function useApiResource<T>(url: string, fallbackData: T, sourceKey: string): AsyncState<T> {
   const query = useQuery<T, Error>({
     queryKey: [url],
     queryFn: async () => {
@@ -1533,9 +1709,9 @@ function useApiResource<T>(url: string, fallbackData: T): AsyncState<T> {
   // query.data survives across mounts (cached by queryKey), so switching tabs and
   // back shows the last known-good payload immediately instead of replaying the
   // fallback-sample -> real-data swap that used to cause the visible flicker.
-  if (query.data !== undefined) return { status: 'ready', data: query.data, error: null, fallback: false }
-  if (query.isError) return { status: 'error', data: fallbackData, error: `${url}: ${query.error.message}`, fallback: true }
-  return { status: 'loading', data: fallbackData, error: null, fallback: false }
+  if (query.data !== undefined) return { status: 'ready', data: query.data, error: null, fallback: false, source: sourceKey }
+  if (query.isError) return { status: 'error', data: fallbackData, error: `${url}: ${query.error.message}`, fallback: true, source: sourceKey }
+  return { status: 'loading', data: fallbackData, error: null, fallback: false, source: sourceKey }
 }
 
 function useApiHealth(): boolean | null {
@@ -1544,7 +1720,7 @@ function useApiHealth(): boolean | null {
   useEffect(() => {
     let active = true
     const check = () => {
-      fetch('/healthz')
+      fetch('/readyz')
         .then((response) => {
           if (active) setHealthy(response.ok)
         })
@@ -1569,6 +1745,7 @@ function routeFromPath(pathname: string): RouteState {
   if (pathname === '/approvals') return { name: 'approvals' }
   if (pathname === '/audit-log') return { name: 'audit' }
   if (pathname === '/settings/log-sink') return { name: 'settings' }
+  if (pathname === '/services') return { name: 'services' }
   return { name: 'overview' }
 }
 
@@ -1670,4 +1847,131 @@ function guardExplanation(labels: Labeler, guard: GuardDetail | null): string {
   if (guard.downgraded_by === 'human_approval_required') return labels.text('incident.guardReasonHumanApproval')
   if (guard.downgraded_by === 'circuit_breaker') return labels.text('incident.guardReasonCircuitBreaker')
   return labels.text('incident.guardReasonUnknown')
+}
+
+type StepBadge = { label: string; value: string }
+type HumanizedStep = { summary: string; badges: StepBadge[]; excerpt?: string }
+
+function yesNoUnknown(labels: Labeler, value: unknown): string {
+  if (value === true) return labels.text('common.yes')
+  if (value === false) return labels.text('common.no')
+  return labels.text('common.unknown')
+}
+
+// incident_steps.detail 是 agent 端寫的 Any 型別 JSON,沒有 schema 保證——這裡逐一
+// 對應目前已知的 11 種 step(見 platform-agent/src/agent.py 的 step() 呼叫點),遇到
+// 認不得的 step 名稱或形狀一律退回 detailToText,不讓畫面因為未知欄位而空白或壞掉。
+function humanizeStepDetail(labels: Labeler, step: string, detail: unknown): HumanizedStep {
+  if (typeof detail !== 'object' || detail === null) {
+    return { summary: detailToText(detail), badges: [] }
+  }
+  const d = detail as Record<string, unknown>
+  const badges: StepBadge[] = []
+
+  switch (step) {
+    case 'queued': {
+      if (d.cooldown === true) {
+        const note = typeof d.note === 'string' && d.note ? d.note : null
+        const summary = note
+          ? labels.text('stepDetails.queuedCooldownWithNote', { note })
+          : labels.text('stepDetails.queuedCooldown')
+        if (typeof d.cooldown_min === 'number') badges.push({ label: labels.text('stepDetails.badgeCooldown'), value: `${d.cooldown_min}m` })
+        return { summary, badges }
+      }
+      const tier = typeof d.tier === 'number' || typeof d.tier === 'string' ? d.tier : labels.text('common.unknown')
+      if ('group_dedup' in d) badges.push({ label: labels.text('stepDetails.badgeDedup'), value: yesNoUnknown(labels, d.group_dedup) })
+      if ('auto_remediate' in d) badges.push({ label: labels.text('stepDetails.badgeAutoRemediate'), value: yesNoUnknown(labels, d.auto_remediate) })
+      return { summary: labels.text('stepDetails.queuedAccepted', { tier }), badges }
+    }
+    case 'sanitized': {
+      const count = typeof d.entities_masked === 'number' ? d.entities_masked : 0
+      if (typeof d.entities_masked === 'number') badges.push({ label: labels.text('stepDetails.badgeMasked'), value: String(d.entities_masked) })
+      if (typeof d.protected_resource_matches === 'number') badges.push({ label: labels.text('stepDetails.badgeProtectedMatches'), value: String(d.protected_resource_matches) })
+      return {
+        summary: labels.text('stepDetails.sanitizedSummary', { count }),
+        badges,
+        excerpt: typeof d.excerpt === 'string' && d.excerpt ? d.excerpt : undefined,
+      }
+    }
+    case 'events_collected': {
+      if (typeof d.entities_masked === 'number') badges.push({ label: labels.text('stepDetails.badgeMasked'), value: String(d.entities_masked) })
+      return {
+        summary: labels.text('stepDetails.eventsCollectedSummary'),
+        badges,
+        excerpt: typeof d.excerpt === 'string' && d.excerpt ? d.excerpt : undefined,
+      }
+    }
+    case 'evidence_gathered':
+      return { summary: labels.text('stepDetails.evidenceGatheredSummary'), badges: [] }
+    case 'retrieved': {
+      const hitCount = typeof d.hit_count === 'number' ? d.hit_count : 0
+      if (typeof d.keyword_query === 'string' && d.keyword_query) badges.push({ label: labels.text('stepDetails.badgeQuery'), value: d.keyword_query })
+      if (Array.isArray(d.hits) && d.hits.length > 0 && typeof d.hits[0] === 'object' && d.hits[0] !== null) {
+        const best = d.hits[0] as Record<string, unknown>
+        if (typeof best.service === 'string') {
+          const score = typeof best.score === 'number' ? ` (${best.score})` : ''
+          badges.push({ label: labels.text('stepDetails.badgeBestMatch'), value: `${best.service}${score}` })
+        }
+      }
+      return {
+        summary: labels.text(hitCount > 0 ? 'stepDetails.retrievedFound' : 'stepDetails.retrievedNone', { count: hitCount }),
+        badges,
+      }
+    }
+    case 'judged': {
+      const action = labels.text(actionLabelKey(d.action))
+      if (typeof d.model === 'string') badges.push({ label: labels.text('stepDetails.badgeModel'), value: d.model })
+      if (typeof d.input_tokens === 'number' && typeof d.output_tokens === 'number') {
+        badges.push({ label: labels.text('stepDetails.badgeTokens'), value: `${d.input_tokens}/${d.output_tokens}` })
+      }
+      if (typeof d.cost_usd === 'number') badges.push({ label: labels.text('stepDetails.badgeCost'), value: `$${d.cost_usd.toFixed(4)}` })
+      return {
+        summary: labels.text('stepDetails.judgedSummary', { action }),
+        badges,
+        excerpt: typeof d.reason === 'string' && d.reason ? d.reason : undefined,
+      }
+    }
+    case 'guarded': {
+      if ('target_match' in d) badges.push({ label: labels.text('stepDetails.badgeTargetMatch'), value: yesNoUnknown(labels, d.target_match) })
+      if ('human_approval_required' in d) badges.push({ label: labels.text('stepDetails.badgeHumanApproval'), value: yesNoUnknown(labels, d.human_approval_required) })
+      if ('circuit_open' in d) badges.push({ label: labels.text('stepDetails.badgeCircuitOpen'), value: yesNoUnknown(labels, d.circuit_open) })
+      if (d.still_firing !== null && d.still_firing !== undefined) badges.push({ label: labels.text('stepDetails.badgeStillFiring'), value: yesNoUnknown(labels, d.still_firing) })
+      if (typeof d.downgraded_to === 'string' && d.downgraded_to) badges.push({ label: labels.text('stepDetails.badgeDowngradedTo'), value: d.downgraded_to })
+      return { summary: guardExplanation(labels, d as GuardDetail), badges }
+    }
+    case 'remediated': {
+      const action = typeof d.action === 'string' ? d.action : labels.text('common.unknown')
+      const target = typeof d.target === 'string' ? d.target : labels.text('common.unknown')
+      badges.push({ label: labels.text('stepDetails.badgeTarget'), value: target })
+      return { summary: labels.text('stepDetails.remediatedSummary', { action, target }), badges }
+    }
+    case 'verified': {
+      const passed = d.passed === true
+      if (typeof d.ready_replicas === 'number' && typeof d.desired_replicas === 'number') {
+        badges.push({ label: labels.text('stepDetails.badgeReady'), value: `${d.ready_replicas}/${d.desired_replicas}` })
+      }
+      if (typeof d.waited_seconds === 'number') badges.push({ label: labels.text('stepDetails.badgeWaited'), value: fmtDur(d.waited_seconds, labels) })
+      if (typeof d.available_replicas === 'number') badges.push({ label: labels.text('stepDetails.badgeAvailable'), value: String(d.available_replicas) })
+      if (typeof d.unavailable_replicas === 'number') badges.push({ label: labels.text('stepDetails.badgeUnavailable'), value: String(d.unavailable_replicas) })
+      return {
+        summary: labels.text(passed ? 'stepDetails.verifiedPassed' : 'stepDetails.verifiedFailed'),
+        badges,
+        excerpt: !passed && typeof d.progressing_reason === 'string' && d.progressing_reason ? d.progressing_reason : undefined,
+      }
+    }
+    case 'written_back': {
+      const outcome = typeof d.outcome === 'string' ? d.outcome : labels.text('common.unknown')
+      const inRag = d.in_rag === true
+      if ('in_rag' in d) badges.push({ label: labels.text('stepDetails.badgeInRag'), value: yesNoUnknown(labels, d.in_rag) })
+      return { summary: labels.text(inRag ? 'stepDetails.writtenBackInRag' : 'stepDetails.writtenBackSummary', { outcome }), badges }
+    }
+    case 'failed':
+      return {
+        summary: labels.text('stepDetails.failedSummary'),
+        badges: [],
+        excerpt: typeof d.error === 'string' && d.error ? d.error : undefined,
+      }
+    default:
+      return { summary: detailToText(detail), badges: [] }
+  }
 }
