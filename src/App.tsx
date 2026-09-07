@@ -7,7 +7,6 @@ import { ThemeProvider, createTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
 import {
   AlertTriangle,
-  ArrowRight,
   ArrowUpRight,
   CheckCircle2,
   Clock3,
@@ -43,8 +42,8 @@ type RouteState =
 
 type LanguageMode = 'en' | 'zh' | 'both'
 type ThemeMode = 'light' | 'dark'
-type Tone = 'default' | 'info' | 'success' | 'warning' | 'danger'
 type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'expired' | 'all'
+type WorkFilter = 'assigned' | 'team' | 'all'
 
 type Counters = {
   alerts: number
@@ -467,7 +466,7 @@ function App() {
   const [route, setRoute] = useState<RouteState>(() => routeFromPath(window.location.pathname))
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [theme, setTheme] = useStoredState<ThemeMode>('engops-theme', 'light')
-  const [language, setLanguage] = useStoredState<LanguageMode>('engops-language-mode', 'both')
+  const [language, setLanguage] = useStoredState<LanguageMode>('engops-language-mode', 'zh')
   const [operatorName, setOperatorName] = useStoredState<string>('engops-operator-name', 'lab-ui')
   const [windowHours, setWindowHours] = useState(24)
   const apiHealthy = useApiHealth()
@@ -576,18 +575,6 @@ function App() {
           <SearchBox labels={labels} navigate={navigate} />
           <div className="top-actions">
             <SegmentedControl
-              ariaLabel="Time window"
-              icon={<Clock3 size={15} />}
-              value={String(windowHours)}
-              options={[
-                { value: '1', label: '1h' },
-                { value: '6', label: '6h' },
-                { value: '24', label: '24h' },
-                { value: '168', label: '7d' },
-              ]}
-              onChange={(next) => setWindowHours(Number(next))}
-            />
-            <SegmentedControl
               ariaLabel="Language"
               icon={<Languages size={15} />}
               value={language}
@@ -605,7 +592,7 @@ function App() {
           </div>
         </header>
 
-        {route.name === 'overview' && <OverviewPage labels={labels} navigate={navigate} windowHours={windowHours} />}
+        {route.name === 'overview' && <OverviewPage labels={labels} navigate={navigate} operatorName={operatorName} windowHours={windowHours} setWindowHours={setWindowHours} />}
         {route.name === 'incident' && <IncidentPage labels={labels} incidentId={route.id} />}
         {route.name === 'services' && <ServiceCatalogPage labels={labels} />}
         {route.name === 'approvals' && <ApprovalsPage labels={labels} />}
@@ -913,157 +900,147 @@ function ExecutionPlanPanel({ labels, approvalId }: { labels: Labeler; approvalI
   )
 }
 
-function OverviewPage({ labels, navigate, windowHours }: { labels: Labeler; navigate: (href: string) => void; windowHours: number }) {
+function OverviewPage({ labels, navigate, operatorName, windowHours, setWindowHours }: { labels: Labeler; navigate: (href: string) => void; operatorName: string; windowHours: number; setWindowHours: (value: number) => void }) {
   const state = useApiResource(`/api/v1/overview?window_hours=${windowHours}`, sampleOverview, 'sources.overview')
   const scorecardState = useApiResource('/api/v1/scorecards/selfheal-readiness/latest', sampleScorecardLatest, 'sources.scorecard')
-  const [needsKind, setNeedsKind] = useState('all')
-  const [needsService, setNeedsService] = useState('all')
+  const catalogState = useApiResource('/api/v1/service-catalog', sampleServiceCatalog, 'sources.serviceCatalog')
+  const [workFilter, setWorkFilter] = useState<WorkFilter>('assigned')
 
   if (state.status === 'loading') return <PageSkeleton panels={3} />
 
   const data = state.data
   const counters = data.counters
-  const scorecard = scorecardState.data
+  const scorecard: ScorecardLatest = scorecardState.status === 'ready'
+    ? scorecardState.data
+    : { scorecard_id: 'selfheal-readiness', name: '', evaluated_at: null, services: [], totals: { passed: 0, total: 0, percent: null } }
+  const catalog = catalogState.status === 'ready' ? catalogState.data.services : []
   const windowLabel = windowHours >= 24 && windowHours % 24 === 0 ? `${windowHours / 24}d` : `${windowHours}h`
-  const needsKindOptions = Array.from(new Set(data.needs_you.map((item) => item.kind)))
-  const needsServiceOptions = Array.from(
-    new Set(data.needs_you.map((item) => item.service).filter((service): service is string => service !== null)),
-  )
-  const filteredNeeds = data.needs_you.filter(
-    (item) => (needsKind === 'all' || item.kind === needsKind) && (needsService === 'all' || item.service === needsService),
-  )
+  const ownerLookup = serviceOwnerLookup(catalog)
+  const workItems = enrichNeeds(data.needs_you, ownerLookup)
+  const assignedItems = workItems.filter((item) => matchesOperator(item, operatorName))
+  const teamItems = workItems.filter((item) => item.owner_team !== null || item.owner_email !== null)
+  const scopedItems = workFilter === 'assigned'
+    ? (assignedItems.length > 0 ? assignedItems : workItems)
+    : workFilter === 'team'
+      ? teamItems
+      : workItems
+  const activeItems = scopedItems.filter((item) => !isStalledWork(item))
+  const stalledItems = scopedItems.filter(isStalledWork)
+  const needsNow = workItems.filter((item) => !isStalledWork(item)).length
+  const stalledCount = workItems.filter(isStalledWork).length
+  const runningCount = data.recent.filter((incident) => incident.status === 'running').length
+  const serviceTiles = serviceAttentionTiles(scorecard, ownerLookup, labels)
+  const attentionTiles = serviceTiles.filter((item) => item.status !== 'passing')
+  const passingCount = serviceTiles.filter((item) => item.status === 'passing').length
+  const topIncident = data.recent.find((incident) => incident.status === 'running') ?? data.recent[0]
+  const summaryTone = attentionTiles.some((item) => item.status === 'failing') || counters.verify_failed > 0
+    ? 'danger'
+    : stalledCount > 0 || needsNow > 0
+      ? 'warning'
+      : 'success'
 
   return (
-    <div className="page">
-      <PageHeader
-        labels={labels}
-        eyebrowKey="overview.eyebrow"
-        titleKey="overview.title"
-        descriptionKey="overview.description"
-        side={<ApiBadge labels={labels} state={state} />}
-      />
-
-      <section className="metric-grid" aria-label="24 hour operational metrics">
-        <MetricCard labels={labels} labelKey="overview.incidents" value={String(counters.alerts)} captionKey="overview.incidentsCaption" captionOptions={{ window: windowLabel }} tone="default" />
-        <MetricCard labels={labels} labelKey="overview.aiTriaged" value={String(counters.ai_diagnosed)} captionKey="overview.aiTriagedCaption" tone="info" />
-        <MetricCard labels={labels} labelKey="overview.autoFixed" value={String(counters.auto_remediated)} captionKey="overview.verifiedCount" captionOptions={{ count: counters.verified }} tone="success" />
-        <MetricCard labels={labels} labelKey="overview.notifyOnly" value={String(counters.notify_only)} captionKey="overview.cooldownCount" captionOptions={{ count: counters.skipped_cooldown }} tone="warning" />
-        <MetricCard labels={labels} labelKey="overview.verifyFailed" value={String(counters.verify_failed)} captionKey="overview.manualReview" tone="danger" />
-      </section>
-
-      <section className="hero-panel">
-        <div className="hero-copy">
-          <span className="section-kicker">L0 Probe</span>
-          <h2><strong>~{counters.l0_absorbed}</strong> {labels.node('overview.l0Title')}</h2>
-          <p>{labels.node('overview.l0Description')}</p>
-          {counters.l0_absorbed_is_estimate && <span className="estimate-label">{labels.node('common.estimated')}</span>}
+    <div className="page workbench-page">
+      <section className={`workbench-summary ${summaryTone}`}>
+        <div>
+          <span className="section-kicker">{labels.node('overview.eyebrow')}</span>
+          <h1>{systemConclusion(labels, attentionTiles, needsNow, stalledCount)}</h1>
+          <p>{systemConclusionDetail(labels, topIncident, attentionTiles, windowLabel)}</p>
         </div>
-        {/* MTTR 趨勢圖（TrendCard）先不做：後端目前沒有任何 MTTR 計算依據
-            （remediation_log 有時間戳記，但從未聚合成時間序列），要做到真的
-            得先定義 MTTR 怎麼算、抓多長窗口，這是超出當前修復範圍的新功能，
-            決定先保留元件/資料結構、註解掉渲染，等之後真的要做 MTTR 時再打開，
-            不要用假數字充版面。 */}
-        {/* <TrendCard labels={labels} /> */}
+        {topIncident ? (
+          <button className="summary-action" type="button" onClick={() => navigate(`/incidents/${topIncident.id}`)}>
+            {labels.node('overview.viewIncident')}
+            <ArrowUpRight size={15} />
+          </button>
+        ) : <ApiBadge labels={labels} state={state} />}
       </section>
 
-      <div className="work-grid">
-        <section className="panel">
-          <div className="needs-toolbar">
-            <PanelTitle labels={labels} kickerKey="overview.actionQueue" titleKey="overview.openWork" meta={`${filteredNeeds.length} items`} />
-            <div className="needs-filters">
-              <select
-                className="needs-filter-select"
-                aria-label={labels.text('overview.filterByStatus')}
-                value={needsKind}
-                onChange={(event) => setNeedsKind(event.target.value)}
-              >
-                <option value="all">{labels.text('overview.allStatuses')}</option>
-                {needsKindOptions.map((kind) => (
-                  <option key={kind} value={kind}>{labels.text(needLabelKeys[kind]?.key ?? kind)}</option>
-                ))}
-              </select>
-              <select
-                className="needs-filter-select"
-                aria-label={labels.text('overview.filterByService')}
-                value={needsService}
-                onChange={(event) => setNeedsService(event.target.value)}
-              >
-                <option value="all">{labels.text('overview.allServices')}</option>
-                {needsServiceOptions.map((service) => (
-                  <option key={service} value={service}>{service}</option>
-                ))}
-              </select>
+      <section className="workbench-metrics" aria-label="Action-oriented operations metrics">
+        <ActionMetric label={labels.node('overview.needsYouNow')} value={needsNow} detail={labels.node('overview.needsYouDetail')} tone={needsNow > 0 ? 'danger' : 'default'} />
+        <ActionMetric label={labels.node('overview.waitingOnVerify')} value={runningCount + counters.verify_failed} detail={labels.node('overview.waitingDetail')} tone={runningCount + counters.verify_failed > 0 ? 'warning' : 'default'} />
+        <ActionMetric label={labels.node('overview.stalledOver24h')} value={stalledCount} detail={labels.node('overview.stalledDetail')} tone={stalledCount > 0 ? 'warning' : 'default'} />
+      </section>
+
+      <section className="attention-section" aria-label="Services needing attention">
+        <div className="section-row">
+          <div>
+            <h2>{labels.node('overview.needsAttention')}</h2>
+            <p>{labels.node('overview.needsAttentionMeta', { time: scorecard.evaluated_at ? fmtDur(secondsSince(scorecard.evaluated_at), labels) : labels.text('common.unknownAge') })}</p>
+          </div>
+          <span>{labels.node('overview.sortedBySeverity')}</span>
+        </div>
+
+        {scorecardState.status !== 'ready' ? (
+          <div className="posture-empty">
+            <span>{labels.node('overview.noScorecardResults')}</span>
+          </div>
+        ) : attentionTiles.length === 0 ? (
+          <div className="passing-row">
+            <CheckCircle2 size={16} />
+            <strong>{labels.node('overview.allPassing', { count: passingCount })}</strong>
+          </div>
+        ) : (
+          <>
+            <div className="attention-grid">
+              {attentionTiles.slice(0, 3).map((item) => (
+                <ServiceAttentionCard labels={labels} item={item} key={item.service} />
+              ))}
             </div>
-          </div>
-          <div className="needs-list">
-            {filteredNeeds.length === 0 ? (
-              <div className="empty-approvals">
-                <ShieldCheck size={22} />
-                <span>{labels.node('overview.noMatchingWork')}</span>
+            {passingCount > 0 ? (
+              <div className="passing-row">
+                <CheckCircle2 size={16} />
+                <strong>{labels.node('overview.servicesPassing', { count: passingCount })}</strong>
+                <button className="link-button" type="button" onClick={() => navigate('/services')}>{labels.node('overview.showAll')}</button>
               </div>
-            ) : (
-              filteredNeeds.map((item) => (
-                <NeedRow labels={labels} item={item} key={`${item.kind}:${item.id ?? item.service ?? 'global'}`} navigate={navigate} />
-              ))
-            )}
-          </div>
-        </section>
+            ) : null}
+          </>
+        )}
+      </section>
 
-        <section className="panel">
-          <PanelTitle
-            labels={labels}
-            kickerKey="overview.serviceCatalog"
-            titleKey="overview.productionPosture"
-            meta={scorecard.evaluated_at ? labels.text('overview.synced', { time: formatDateTime(scorecard.evaluated_at) }) : scorecardSummary(scorecard)}
-          />
-          <div className="posture-list">
-            {scorecard.services.length === 0 ? (
-              <div className="posture-empty">{labels.node('overview.noScorecardResults')}</div>
-            ) : (
-              scorecard.services.map((service) => {
-                const percent = scorePercent(service.passed, service.total)
-                return (
-                  <div className="posture-row" key={service.service}>
-                    <span className="service-token"><Server size={15} /></span>
-                    <div>
-                      <strong>{service.service}</strong>
-                      <small>{service.passed}/{service.total} checks</small>
-                    </div>
-                    <div className="score-cell">
-                      <span>{percent === null ? 'N/A' : `${percent}%`}</span>
-                      <small>{scoreStateLabel(percent)}</small>
-                    </div>
-                  </div>
-                )
-              })
-            )}
+      <section className="open-work-section">
+        <div className="section-row">
+          <div>
+            <h2>{labels.node('overview.openWork')}</h2>
+            <p>{labels.node('overview.openWorkMeta', { count: activeItems.length })}</p>
+            {workFilter === 'assigned' && assignedItems.length === 0 ? <p className="filter-note">{labels.node('overview.noAssignedFallback', { operator: operatorName })}</p> : null}
           </div>
-        </section>
-      </div>
-
-      <section className="panel table-panel">
-        <PanelTitle labels={labels} kickerKey="overview.incidentActivity" titleKey="overview.recentIncidents" meta={labels.text('overview.synced', { time: formatDateTime(data.counters_computed_at) })} />
-        <div className="recent-table" aria-label="Recent incidents">
-          <div className="table-row table-head">
-            <span>ID</span>
-            <span>{labels.node('common.service')}</span>
-            <span>{labels.node('common.status')}</span>
-            <span>{labels.node('common.started')}</span>
-            <span />
-          </div>
-          {data.recent.map((incident) => (
-            <button className="table-row table-button" type="button" key={incident.id} onClick={() => navigate(`/incidents/${incident.id}`)}>
-              <span className="mono">#{incident.id}</span>
-              <span>
-                <strong>{incident.service}</strong>
-                <small>{incident.alertname ?? 'Unnamed alert'}</small>
-              </span>
-              <StatusPill labels={labels} status={incident.status} />
-              <span>{formatDateTime(incident.started_at)}</span>
-              <ArrowRight size={16} />
-            </button>
-          ))}
+          <span>{labels.node('overview.syncedAgo', { time: fmtDur(secondsSince(data.counters_computed_at), labels) })}</span>
         </div>
+
+        <div className="work-filter-row" aria-label={labels.text('overview.workScope')}>
+          <button className={workFilter === 'assigned' ? 'selected' : ''} type="button" onClick={() => setWorkFilter('assigned')}>{labels.node('overview.assignedToYou')}</button>
+          <button className={workFilter === 'team' ? 'selected' : ''} type="button" onClick={() => setWorkFilter('team')}>{labels.node('overview.myTeam')}</button>
+          <button className={workFilter === 'all' ? 'selected' : ''} type="button" onClick={() => setWorkFilter('all')}>{labels.node('overview.allMonitored', { count: catalog.length || scorecard.services.length })}</button>
+        </div>
+
+        <WorkGroup labels={labels} title={labels.node('overview.needsYouNow')} items={activeItems} navigate={navigate} emptyKey="overview.noMatchingWork" />
+        <details className="work-details" open={stalledItems.length > 0}>
+          <summary>
+            <span>{labels.node('overview.stalledGroup', { count: stalledItems.length })}</span>
+            <small>{labels.node('overview.stalledGroupMeta')}</small>
+          </summary>
+          <WorkGroup labels={labels} title={null} items={stalledItems} navigate={navigate} emptyKey="overview.noStalledWork" />
+        </details>
+      </section>
+
+      <section className="activity-strip">
+        <div>
+          <span>{labels.node('overview.windowedActivity', { window: windowLabel })}</span>
+          <strong>{labels.node('overview.activitySummary', { alerts: counters.alerts, diagnosed: counters.ai_diagnosed, notifyOnly: counters.notify_only, autoFixed: counters.auto_remediated })}</strong>
+          {counters.l0_absorbed_is_estimate ? <small>{labels.node('overview.l0Inline', { count: counters.l0_absorbed })}</small> : null}
+        </div>
+        <SegmentedControl
+          ariaLabel={labels.text('overview.activityWindow')}
+          icon={<Clock3 size={15} />}
+          value={String(windowHours)}
+          options={[
+            { value: '1', label: '1h' },
+            { value: '6', label: '6h' },
+            { value: '24', label: '24h' },
+            { value: '168', label: '7d' },
+          ]}
+          onChange={(next) => setWindowHours(Number(next))}
+        />
       </section>
     </div>
   )
@@ -1309,6 +1286,59 @@ function NavButton({ active, icon: Icon, label, onClick }: { active: boolean; ic
   return <button className={`nav-button ${active ? 'active' : ''}`} type="button" onClick={onClick}><Icon size={17} /><span>{label}</span></button>
 }
 
+type EnrichedNeed = NeedYou & {
+  owner_team: string | null
+  owner_email: string | null
+}
+
+type ServiceAttention = {
+  service: string
+  status: 'failing' | 'at_risk' | 'stale' | 'passing'
+  checks: string
+  owner: string
+  checkedAgo: string
+  failedChecks: number
+  passPercent: number | null
+}
+
+function ActionMetric({ label, value, detail, tone }: { label: ReactNode; value: number; detail: ReactNode; tone: 'default' | 'warning' | 'danger' }) {
+  return (
+    <div className={`action-metric ${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </div>
+  )
+}
+
+function ServiceAttentionCard({ labels, item }: { labels: Labeler; item: ServiceAttention }) {
+  const Icon = item.status === 'failing' ? XCircle : item.status === 'stale' ? Clock3 : AlertTriangle
+  return (
+    <div className={`attention-card ${item.status}`}>
+      <span><Icon size={14} />{labels.node(`overview.serviceStatus.${item.status}`)}</span>
+      <strong>{item.service}</strong>
+      <small>{item.checks}</small>
+      <small>{labels.node('overview.cardMeta', { time: item.checkedAgo, owner: item.owner })}</small>
+    </div>
+  )
+}
+
+function WorkGroup({ labels, title, items, navigate, emptyKey }: { labels: Labeler; title: ReactNode | null; items: EnrichedNeed[]; navigate: (href: string) => void; emptyKey: string }) {
+  return (
+    <div className="work-list">
+      {title ? <span className="work-list-title">{title}</span> : null}
+      {items.length === 0 ? (
+        <div className="empty-approvals compact">
+          <ShieldCheck size={20} />
+          <span>{labels.node(emptyKey)}</span>
+        </div>
+      ) : (
+        items.map((item) => <NeedRow labels={labels} item={item} key={`${item.kind}:${item.id ?? item.service ?? 'global'}`} navigate={navigate} />)
+      )}
+    </div>
+  )
+}
+
 function NeedRow({ labels, item, navigate }: { labels: Labeler; item: NeedYou; navigate: (href: string) => void }) {
   const meta = needLabelKeys[item.kind] ?? { key: item.kind, className: 'neutral', icon: AlertTriangle }
   const Icon = meta.icon
@@ -1428,10 +1458,6 @@ function TimelineStep({ labels, item }: { labels: Labeler; item: TimelineItem })
       </div>
     </div>
   )
-}
-
-function MetricCard({ labels, labelKey, value, captionKey, captionOptions, tone }: { labels: Labeler; labelKey: string; value: string; captionKey: string; captionOptions?: Record<string, unknown>; tone: Tone }) {
-  return <div className={`metric-card ${tone}`}><span>{labels.node(labelKey)}</span><strong>{value}</strong><small>{labels.node(captionKey, captionOptions)}</small></div>
 }
 
 // TrendCard 先不做：這張卡片畫的是完全寫死的 12 點折線加一個固定的 "MTTR -18%"
@@ -1772,6 +1798,88 @@ function operatorInitials(name: string): string {
   return letters.slice(0, 2).join('').toUpperCase()
 }
 
+function serviceOwnerLookup(services: ServiceCatalogEntry[]): Map<string, { owner_team: string | null; owner_email: string | null }> {
+  return new Map(services.map((service) => [service.service, { owner_team: service.owner_team, owner_email: service.owner_email }]))
+}
+
+function enrichNeeds(items: NeedYou[], owners: Map<string, { owner_team: string | null; owner_email: string | null }>): EnrichedNeed[] {
+  return items.map((item) => {
+    const owner = item.service ? owners.get(item.service) : undefined
+    return {
+      ...item,
+      owner_team: item.owner_team ?? owner?.owner_team ?? null,
+      owner_email: item.owner_email ?? owner?.owner_email ?? null,
+    }
+  })
+}
+
+function matchesOperator(item: EnrichedNeed, operatorName: string): boolean {
+  const normalized = operatorName.trim().toLowerCase()
+  if (!normalized) return false
+  return [item.owner_team, item.owner_email]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase().includes(normalized))
+}
+
+function isStalledWork(item: NeedYou): boolean {
+  return item.kind === 'timeline_stale' || (item.waiting_seconds !== null && item.waiting_seconds >= 24 * 60 * 60)
+}
+
+function serviceAttentionTiles(scorecard: ScorecardLatest, owners: Map<string, { owner_team: string | null; owner_email: string | null }>, labels: Labeler): ServiceAttention[] {
+  const scoreAge = scorecard.evaluated_at ? secondsSince(scorecard.evaluated_at) : null
+  const scorecardStale = scoreAge !== null && scoreAge >= 3 * 60 * 60
+  return scorecard.services
+    .map((service) => {
+      const percent = scorePercent(service.passed, service.total)
+      const status: ServiceAttention['status'] = percent === null || (scorecardStale && percent !== 100)
+        ? 'stale'
+        : percent >= 100
+          ? 'passing'
+          : percent <= 50
+            ? 'failing'
+            : 'at_risk'
+      const owner = owners.get(service.service)
+      return {
+        service: service.service,
+        status,
+        checks: percent === null
+          ? labels.text('overview.noResult')
+          : labels.text('overview.checkSummary', { passed: Math.max(service.total - service.passed, 0), total: service.total }),
+        owner: owner?.owner_team ?? owner?.owner_email ?? labels.text('services.noOwner'),
+        checkedAgo: scoreAge === null ? labels.text('common.unknownAge') : fmtDur(scoreAge, labels),
+        failedChecks: Math.max(service.total - service.passed, 0),
+        passPercent: percent,
+      }
+    })
+    .sort((a, b) => serviceStatusRank(a.status) - serviceStatusRank(b.status)
+      || b.failedChecks - a.failedChecks
+      || (a.passPercent ?? 101) - (b.passPercent ?? 101)
+      || a.service.localeCompare(b.service))
+}
+
+function serviceStatusRank(status: ServiceAttention['status']): number {
+  if (status === 'failing') return 0
+  if (status === 'at_risk') return 1
+  if (status === 'stale') return 2
+  return 3
+}
+
+function systemConclusion(labels: Labeler, attentionTiles: ServiceAttention[], needsNow: number, stalledCount: number): ReactNode {
+  const failingCount = attentionTiles.filter((item) => item.status === 'failing').length
+  const atRiskCount = attentionTiles.filter((item) => item.status === 'at_risk').length
+  if (failingCount > 0) return labels.node('overview.conclusionFailing', { failing: failingCount, atRisk: atRiskCount })
+  if (needsNow > 0) return labels.node('overview.conclusionWork', { count: needsNow })
+  if (stalledCount > 0) return labels.node('overview.conclusionStalled', { count: stalledCount })
+  return labels.node('overview.conclusionClear')
+}
+
+function systemConclusionDetail(labels: Labeler, incident: RecentIncident | undefined, attentionTiles: ServiceAttention[], windowLabel: string): ReactNode {
+  const firstProblem = attentionTiles.find((item) => item.status !== 'passing')
+  if (firstProblem) return labels.node('overview.conclusionServiceDetail', { service: firstProblem.service, owner: firstProblem.owner, checked: firstProblem.checkedAgo })
+  if (incident) return labels.node('overview.conclusionIncidentDetail', { service: incident.service, alert: incident.alertname ?? incident.status, window: windowLabel })
+  return labels.node('overview.conclusionClearDetail', { window: windowLabel })
+}
+
 function formatDateTime(isoTime: string): string {
   const timestamp = Date.parse(isoTime)
   if (Number.isNaN(timestamp)) return 'Unknown'
@@ -1781,18 +1889,6 @@ function formatDateTime(isoTime: string): string {
 function scorePercent(passed: number, total: number): number | null {
   if (!Number.isFinite(total) || total <= 0) return null
   return Math.round((passed / total) * 100)
-}
-
-function scoreStateLabel(score: number | null): string {
-  if (score === null) return 'No result'
-  if (score >= 80) return 'Passing'
-  if (score >= 60) return 'Watch'
-  return 'At risk'
-}
-
-function scorecardSummary(scorecard: ScorecardLatest): string {
-  if (scorecard.totals.percent === null) return 'No scorecard result'
-  return `${scorecard.name} ${scorecard.totals.percent}%`
 }
 
 function detailToText(detail: unknown): string {
