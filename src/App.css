@@ -356,6 +356,12 @@
   background: var(--color-surface);
 }
 
+.icon-button.mini {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+}
+
 .icon-button:hover,
 .top-select:hover,
 .link-button:hover {
@@ -1611,6 +1617,8 @@
 }
 
 .recommendation-body ul {
+  min-width: 0;
+  max-width: 100%;
   display: grid;
   gap: 8px;
   margin: 8px 0 0;
@@ -1619,6 +1627,8 @@
 }
 
 .recommendation-body li {
+  min-width: 0;
+  max-width: 100%;
   display: grid;
   grid-template-columns: 15px minmax(0, 1fr);
   gap: 8px;
@@ -1627,9 +1637,42 @@
   overflow-wrap: anywhere;
 }
 
+.recommendation-body li > div {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .recommendation-body li svg {
   margin-top: 2px;
   color: var(--color-accent);
+}
+
+.recommendation-commands {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.command-row {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  gap: 6px;
+  align-items: center;
+}
+
+.command-row code {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--color-line);
+  border-radius: 7px;
+  padding: 7px 9px;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  font: 12px/1.45 var(--font-mono);
+  white-space: pre;
 }
 
 .timeline {
@@ -2104,6 +2147,7 @@
 
   .page-header h1 {
     font-size: 28px;
+    word-break: break-all;
   }
 
   .incident-summary {
@@ -2116,6 +2160,15 @@
   .detail-panel {
     min-width: 0;
     max-width: 100%;
+  }
+
+  .recommendation-commands {
+    width: calc(100vw - 88px);
+    max-width: 100%;
+  }
+
+  .command-row code {
+    width: 100%;
   }
 
   .workbench-summary,

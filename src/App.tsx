@@ -10,6 +10,7 @@ import {
   ArrowUpRight,
   CheckCircle2,
   Clock3,
+  Clipboard,
   Database,
   FileCog,
   Gauge,
@@ -1062,7 +1063,7 @@ function IncidentPage({ labels, incidentId }: { labels: Labeler; incidentId: str
   const accuracy = useApiResource(`/api/v1/accuracy?service=${encodeURIComponent(data.service)}`, fallbackAccuracy, 'sources.accuracy')
   const judgedDetail = judgedDetailFromTimeline(data.timeline)
   const guardDetail = guardDetailFromTimeline(data.timeline)
-  const recommendationSteps = incidentRecommendationSteps(labels, judgedDetail, guardDetail)
+  const recommendationSteps = incidentRecommendationSteps(labels, data.service, judgedDetail, guardDetail)
 
   if (state.status === 'loading') return <PageSkeleton panels={2} />
 
@@ -1304,6 +1305,11 @@ type ServiceAttention = {
   passPercent: number | null
 }
 
+type RecommendationStep = {
+  text: string
+  commands: string[]
+}
+
 function ActionMetric({ label, value, detail, tone }: { label: ReactNode; value: number; detail: ReactNode; tone: 'default' | 'warning' | 'danger' }) {
   return (
     <div className={`action-metric ${tone}`}>
@@ -1342,7 +1348,7 @@ function WorkGroup({ labels, title, items, navigate, emptyKey }: { labels: Label
   )
 }
 
-function RecommendationPanel({ labels, judged, steps }: { labels: Labeler; judged: JudgedDetail | null; steps: string[] }) {
+function RecommendationPanel({ labels, judged, steps }: { labels: Labeler; judged: JudgedDetail | null; steps: RecommendationStep[] }) {
   const reason = typeof judged?.reason === 'string' && judged.reason.trim() ? judged.reason : labels.text('incident.aiNoReason')
 
   return (
@@ -1363,7 +1369,30 @@ function RecommendationPanel({ labels, judged, steps }: { labels: Labeler; judge
           <strong>{labels.node('incident.nextSteps')}</strong>
           <ul>
             {steps.map((step) => (
-              <li key={step}><CheckCircle2 size={15} />{step}</li>
+              <li key={step.text}>
+                <CheckCircle2 size={15} />
+                <div>
+                  <span>{step.text}</span>
+                  {step.commands.length > 0 ? (
+                    <div className="recommendation-commands">
+                      {step.commands.map((command) => (
+                        <div className="command-row" key={command}>
+                          <code>{command}</code>
+                          <button
+                            className="icon-button mini"
+                            type="button"
+                            aria-label={labels.text('incident.copyCommand')}
+                            title={labels.text('incident.copyCommand')}
+                            onClick={() => void navigator.clipboard?.writeText(command)}
+                          >
+                            <Clipboard size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </li>
             ))}
           </ul>
         </div>
@@ -1970,8 +1999,8 @@ function actionLabelKey(action: unknown): string {
 }
 
 // 只有五道降級檢查裡「有降級」時才需要解釋給人看;沒降級就是模型判斷照原樣執行。
-function incidentRecommendationSteps(labels: Labeler, judged: JudgedDetail | null, guard: GuardDetail | null): string[] {
-  if (!judged) return [labels.text('incident.recommendationWaitForJudgment')]
+function incidentRecommendationSteps(labels: Labeler, service: string, judged: JudgedDetail | null, guard: GuardDetail | null): RecommendationStep[] {
+  if (!judged) return [{ text: labels.text('incident.recommendationWaitForJudgment'), commands: [] }]
 
   const reason = typeof judged.reason === 'string' ? judged.reason.toLowerCase() : ''
   const action = typeof judged.action === 'string' ? judged.action : ''
@@ -1983,27 +2012,80 @@ function incidentRecommendationSteps(labels: Labeler, judged: JudgedDetail | nul
     guard?.circuit_open,
   ].map((value) => String(value ?? '').toLowerCase()).join(' ')
   const combined = `${reason} ${guardText}`
-  const steps: string[] = []
+  const deploymentName = shellSingleQuote(service)
+  const namespacePlaceholder = '<namespace>'
+  const deploymentPlaceholder = '<deployment>'
+  const steps: RecommendationStep[] = []
 
   if (combined.includes('404') || combined.includes('not found') || combined.includes('deployment')) {
-    steps.push(labels.text('incident.recommendationCheckTarget'))
-    steps.push(labels.text('incident.recommendationCheckAccess'))
+    steps.push({
+      text: labels.text('incident.recommendationCheckTarget'),
+      commands: [
+        `kubectl get deployment -A | grep ${deploymentName}`,
+        `kubectl get pods -A | grep ${deploymentName}`,
+      ],
+    })
+    steps.push({
+      text: labels.text('incident.recommendationCheckAccess'),
+      commands: [
+        'kubectl auth can-i get deployments --all-namespaces',
+        'kubectl auth can-i get events --all-namespaces',
+        `kubectl get events -A --field-selector involvedObject.name=${service}`,
+      ],
+    })
   }
 
   if (combined.includes('tier-0') || combined.includes('human') || combined.includes('approval') || guard?.human_approval_required === true) {
-    steps.push(labels.text('incident.recommendationEscalateOwner'))
+    steps.push({
+      text: labels.text('incident.recommendationEscalateOwner'),
+      commands: [
+        `kubectl get deployment ${deploymentPlaceholder} -n ${namespacePlaceholder} -o wide`,
+        `kubectl describe deployment ${deploymentPlaceholder} -n ${namespacePlaceholder}`,
+      ],
+    })
   }
 
   if (action === 'restart' || action === 'rollback') {
-    steps.push(labels.text('incident.recommendationPrepareApproval', { action: labels.text(actionLabelKey(action)) }))
-    steps.push(labels.text('incident.recommendationVerifyAfterAction'))
+    const mutationCommand = action === 'rollback'
+      ? `kubectl rollout undo deployment/${deploymentPlaceholder} -n ${namespacePlaceholder}`
+      : `kubectl rollout restart deployment/${deploymentPlaceholder} -n ${namespacePlaceholder}`
+    steps.push({
+      text: labels.text('incident.recommendationPrepareApproval', { action: labels.text(actionLabelKey(action)) }),
+      commands: [mutationCommand],
+    })
+    steps.push({
+      text: labels.text('incident.recommendationVerifyAfterAction'),
+      commands: [
+        `kubectl rollout status deployment/${deploymentPlaceholder} -n ${namespacePlaceholder}`,
+        `kubectl get pods -n ${namespacePlaceholder} -l app=${deploymentPlaceholder}`,
+      ],
+    })
   }
 
   if (action === 'notify_only' || steps.length === 0) {
-    steps.push(labels.text('incident.recommendationManualReview'))
+    steps.push({
+      text: labels.text('incident.recommendationManualReview'),
+      commands: [
+        `kubectl describe deployment ${deploymentPlaceholder} -n ${namespacePlaceholder}`,
+        `kubectl get events -n ${namespacePlaceholder} --sort-by=.lastTimestamp`,
+      ],
+    })
   }
 
-  return Array.from(new Set(steps))
+  return dedupeRecommendationSteps(steps)
+}
+
+function dedupeRecommendationSteps(steps: RecommendationStep[]): RecommendationStep[] {
+  const seen = new Set<string>()
+  return steps.filter((step) => {
+    if (seen.has(step.text)) return false
+    seen.add(step.text)
+    return true
+  })
+}
+
+function shellSingleQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\"'\"'")}'`
 }
 
 function guardExplanation(labels: Labeler, guard: GuardDetail | null): string {
