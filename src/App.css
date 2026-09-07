@@ -1649,9 +1649,11 @@
 
   .topbar {
     padding: 0 14px;
+    gap: 8px;
   }
 
   .search-box {
+    min-width: 0;
     width: auto;
     flex: 1;
   }
@@ -1661,6 +1663,10 @@
   }
 
   .top-actions .segmented {
+    display: none;
+  }
+
+  .top-actions .icon-button[aria-label='Refresh'] {
     display: none;
   }
 
