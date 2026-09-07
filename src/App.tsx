@@ -1062,6 +1062,7 @@ function IncidentPage({ labels, incidentId }: { labels: Labeler; incidentId: str
   const accuracy = useApiResource(`/api/v1/accuracy?service=${encodeURIComponent(data.service)}`, fallbackAccuracy, 'sources.accuracy')
   const judgedDetail = judgedDetailFromTimeline(data.timeline)
   const guardDetail = guardDetailFromTimeline(data.timeline)
+  const recommendationSteps = incidentRecommendationSteps(labels, judgedDetail, guardDetail)
 
   if (state.status === 'loading') return <PageSkeleton panels={2} />
 
@@ -1081,6 +1082,8 @@ function IncidentPage({ labels, incidentId }: { labels: Labeler; incidentId: str
         <span><Clock3 size={14} />{labels.node('incident.started', { time: formatDateTime(data.started_at) })}</span>
         <span><Server size={14} />{data.timeline.length} steps</span>
       </div>
+
+      <RecommendationPanel labels={labels} judged={judgedDetail} steps={recommendationSteps} />
 
       <div className="incident-layout">
         <section className="timeline-panel">
@@ -1336,6 +1339,36 @@ function WorkGroup({ labels, title, items, navigate, emptyKey }: { labels: Label
         items.map((item) => <NeedRow labels={labels} item={item} key={`${item.kind}:${item.id ?? item.service ?? 'global'}`} navigate={navigate} />)
       )}
     </div>
+  )
+}
+
+function RecommendationPanel({ labels, judged, steps }: { labels: Labeler; judged: JudgedDetail | null; steps: string[] }) {
+  const reason = typeof judged?.reason === 'string' && judged.reason.trim() ? judged.reason : labels.text('incident.aiNoReason')
+
+  return (
+    <section className="recommendation-panel" aria-label={labels.text('incident.recommendedHandling')}>
+      <div className="recommendation-heading">
+        <span className="section-kicker">{labels.node('incident.recommendedHandling')}</span>
+        <div className="assessment-score compact">
+          <Sparkles size={18} />
+          <strong>{judged ? labels.node(actionLabelKey(judged.action)) : labels.node('incident.recommendationNoJudgment')}</strong>
+        </div>
+      </div>
+      <div className="recommendation-body">
+        <div>
+          <strong>{labels.node('incident.recommendedReason')}</strong>
+          <p>{judged ? reason : labels.node('incident.aiNoJudgment')}</p>
+        </div>
+        <div>
+          <strong>{labels.node('incident.nextSteps')}</strong>
+          <ul>
+            {steps.map((step) => (
+              <li key={step}><CheckCircle2 size={15} />{step}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -1914,6 +1947,8 @@ type GuardDetail = {
   downgraded_by?: unknown
   tier_policy?: unknown
   l2_policy?: unknown
+  human_approval_required?: unknown
+  circuit_open?: unknown
 }
 
 function judgedDetailFromTimeline(timeline: TimelineItem[]): JudgedDetail | null {
@@ -1935,6 +1970,42 @@ function actionLabelKey(action: unknown): string {
 }
 
 // 只有五道降級檢查裡「有降級」時才需要解釋給人看;沒降級就是模型判斷照原樣執行。
+function incidentRecommendationSteps(labels: Labeler, judged: JudgedDetail | null, guard: GuardDetail | null): string[] {
+  if (!judged) return [labels.text('incident.recommendationWaitForJudgment')]
+
+  const reason = typeof judged.reason === 'string' ? judged.reason.toLowerCase() : ''
+  const action = typeof judged.action === 'string' ? judged.action : ''
+  const guardText = [
+    guard?.downgraded_by,
+    guard?.tier_policy,
+    guard?.l2_policy,
+    guard?.human_approval_required,
+    guard?.circuit_open,
+  ].map((value) => String(value ?? '').toLowerCase()).join(' ')
+  const combined = `${reason} ${guardText}`
+  const steps: string[] = []
+
+  if (combined.includes('404') || combined.includes('not found') || combined.includes('deployment')) {
+    steps.push(labels.text('incident.recommendationCheckTarget'))
+    steps.push(labels.text('incident.recommendationCheckAccess'))
+  }
+
+  if (combined.includes('tier-0') || combined.includes('human') || combined.includes('approval') || guard?.human_approval_required === true) {
+    steps.push(labels.text('incident.recommendationEscalateOwner'))
+  }
+
+  if (action === 'restart' || action === 'rollback') {
+    steps.push(labels.text('incident.recommendationPrepareApproval', { action: labels.text(actionLabelKey(action)) }))
+    steps.push(labels.text('incident.recommendationVerifyAfterAction'))
+  }
+
+  if (action === 'notify_only' || steps.length === 0) {
+    steps.push(labels.text('incident.recommendationManualReview'))
+  }
+
+  return Array.from(new Set(steps))
+}
+
 function guardExplanation(labels: Labeler, guard: GuardDetail | null): string {
   if (!guard || !guard.downgraded_by) return labels.text('incident.guardClear')
   if (typeof guard.tier_policy === 'string' && guard.tier_policy) return guard.tier_policy
