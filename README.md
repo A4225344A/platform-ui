@@ -61,3 +61,15 @@ are missing:
 
 Pull requests run build and lint only. Pushes to `main` and manual workflow
 runs deploy the artifact and create a CloudFront invalidation.
+
+The deployment also uploads a no-cache `version.json` and verifies it through
+CloudFront after invalidation. To confirm which commit is live:
+
+```bash
+curl -fsS "https://<cloudfront-domain>/version.json"
+```
+
+The `commit` field should match the latest deployed `platform-ui` commit. If
+`version.json` is old, check the `Deploy EngOps UI` workflow run. If
+`version.json` is current but the browser still shows an old UI, force refresh
+the browser cache or test in an incognito window.
