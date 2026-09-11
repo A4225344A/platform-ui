@@ -35,6 +35,7 @@ import './App.css'
 
 type RouteState =
   | { name: 'overview' }
+  | { name: 'incidents' }
   | { name: 'incident'; id: string }
   | { name: 'approvals' }
   | { name: 'audit' }
@@ -530,7 +531,7 @@ function App() {
 
         <nav className="nav-list" aria-label="Primary navigation">
           <NavButton active={route.name === 'overview'} icon={LayoutDashboard} label={labels.node('nav.operations')} onClick={() => navigate('/')} />
-          <NavButton active={route.name === 'incident'} icon={AlertTriangle} label={labels.node('nav.incidents')} onClick={() => navigate('/incidents/922')} />
+          <NavButton active={route.name === 'incident' || route.name === 'incidents'} icon={AlertTriangle} label={labels.node('nav.incidents')} onClick={() => navigate('/incidents')} />
           <NavButton active={route.name === 'services'} icon={Server} label={labels.node('nav.services')} onClick={() => navigate('/services')} />
           <NavButton active={route.name === 'approvals'} icon={GitPullRequest} label={labels.node('nav.reviews')} onClick={() => navigate('/approvals')} />
           <NavButton active={route.name === 'audit'} icon={ScrollText} label={labels.node('nav.audit')} onClick={() => navigate('/audit-log')} />
@@ -595,6 +596,7 @@ function App() {
 
         {route.name === 'overview' && <OverviewPage labels={labels} navigate={navigate} operatorName={operatorName} windowHours={windowHours} setWindowHours={setWindowHours} />}
         {route.name === 'incident' && <IncidentPage labels={labels} incidentId={route.id} />}
+        {route.name === 'incidents' && <IncidentsPage labels={labels} navigate={navigate} />}
         {route.name === 'services' && <ServiceCatalogPage labels={labels} />}
         {route.name === 'approvals' && <ApprovalsPage labels={labels} />}
         {route.name === 'audit' && <AuditLogPage labels={labels} />}
@@ -606,6 +608,68 @@ function App() {
 }
 
 export default App
+
+function useLiveData<T>(url: string) {
+  return useQuery<T>({
+    queryKey: [url],
+    queryFn: async ({ signal }) => {
+      const response = await fetch(url, { signal })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      return response.json()
+    },
+    refetchInterval: 30_000,
+    staleTime: 0,
+    retry: 1,
+  })
+}
+
+function ServiceHealthPanel({ labels, navigate }: { labels: Labeler; navigate: (href: string) => void }) {
+  const query = useLiveData<{
+    checked_at: string
+    monitoring_available: boolean
+    services: (ServiceCatalogEntry & { health: string; firing_alerts: string[]; targets_up: number; targets_total: number })[]
+  }>('/api/v1/service-health')
+  const [filter, setFilter] = useState('')
+  return <section className="panel health-panel">
+    <div className="section-row"><h2>{labels.node('health.title')}</h2>
+      <button type="button" className="summary-action" disabled={query.isFetching} onClick={() => void query.refetch()}><RefreshCw size={15} />{labels.node('health.refresh')}</button>
+    </div>
+    <p>{labels.node('health.description')}</p>
+    <input aria-label={labels.text('health.filter')} placeholder={labels.text('health.filter')} value={filter} onChange={(event) => setFilter(event.target.value)} />
+    {query.isPending ? <p role="status">{labels.node('health.loading')}</p> : query.isError ? <p role="alert">{labels.node('health.error')}</p> : <>
+      <p>{labels.node('health.updated')} {formatDateTime(query.data.checked_at)}</p>
+      {!query.data.monitoring_available && <p role="alert">{labels.node('health.unavailable')}</p>}
+      <div className="health-grid">{query.data.services.filter((service) => `${service.service} ${service.display_name ?? ''}`.toLowerCase().includes(filter.toLowerCase())).map((service) =>
+        <article className="approval-card" key={service.service}>
+          <h3>{service.display_name || service.service}</h3><code>{service.service}</code>
+          <p className={`service-health-${service.health}`}>{labels.node(`health.${service.health}`)}</p>
+          <p>{labels.node('health.targets')} {service.targets_up}/{service.targets_total}</p>
+          <p>{service.firing_alerts.join(', ') || labels.node('health.noAlerts')}</p>
+          <button className="summary-action" type="button" onClick={() => navigate(`/incidents?service=${encodeURIComponent(service.service)}`)}>{labels.node('nav.incidents')}<ArrowUpRight size={15} /></button>
+        </article>,
+      )}</div>
+      {query.data.services.length === 0 && <p>{labels.node('health.empty')}</p>}
+    </>}
+  </section>
+}
+
+function IncidentsPage({ labels, navigate }: { labels: Labeler; navigate: (href: string) => void }) {
+  const [service, setService] = useState(() => new URLSearchParams(window.location.search).get('service') ?? '')
+  const [offset, setOffset] = useState(0)
+  const query = useLiveData<{ incidents: RecentIncident[]; has_more: boolean }>(`/api/v1/incidents?limit=50&offset=${offset}${service ? `&service=${encodeURIComponent(service)}` : ''}`)
+  return <div className="page"><section className="panel health-panel">
+    <h1>{labels.node('nav.incidents')}</h1>
+    <input aria-label={labels.text('health.incidentFilter')} placeholder={labels.text('health.incidentFilter')} value={service} onChange={(event) => { setService(event.target.value); setOffset(0) }} />
+    {query.isPending ? <p role="status">{labels.node('health.loading')}</p> : query.isError ? <p role="alert">{labels.node('health.error')}</p> : <>
+      <div className="approval-list">{query.data.incidents.map((incident) => <button type="button" className="approval-card" key={incident.id} onClick={() => navigate(`/incidents/${incident.id}`)}>
+        <strong>#{incident.id} · {incident.service}</strong><p>{incident.alertname} · {incident.status}</p><time>{formatDateTime(incident.started_at)}</time>
+      </button>)}</div>
+      {query.data.incidents.length === 0 && <p>{labels.node('health.noIncidents')}</p>}
+      <button type="button" disabled={offset === 0} onClick={() => setOffset(offset - 50)}>{labels.node('health.previous')}</button>
+      <button type="button" disabled={!query.data.has_more} onClick={() => setOffset(offset + 50)}>{labels.node('health.next')}</button>
+    </>}
+  </section></div>
+}
 
 function ServiceCatalogPage({ labels }: { labels: Labeler }) {
   const state = useApiResource('/api/v1/service-catalog', sampleServiceCatalog, 'sources.serviceCatalog')
@@ -942,6 +1006,7 @@ function OverviewPage({ labels, navigate, operatorName, windowHours, setWindowHo
 
   return (
     <div className="page workbench-page">
+      <ServiceHealthPanel labels={labels} navigate={navigate} />
       <section className={`workbench-summary ${summaryTone}`}>
         <div>
           <span className="section-kicker">{labels.node('overview.eyebrow')}</span>
@@ -1828,6 +1893,8 @@ function useApiHealth(): boolean | null {
 }
 
 function routeFromPath(pathname: string): RouteState {
+  pathname = pathname.split('?')[0]
+  if (pathname === '/incidents') return { name: 'incidents' }
   const incident = pathname.match(/^\/incidents\/([^/]+)$/)
   if (incident) return { name: 'incident', id: decodeURIComponent(incident[1]) }
   if (pathname === '/approvals') return { name: 'approvals' }

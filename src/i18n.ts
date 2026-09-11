@@ -692,4 +692,23 @@ i18n.use(initReactI18next).init({
   },
 })
 
+i18n.addResourceBundle('en', 'translation', { health: {
+  title: 'Live service health', description: 'Refreshes every 30 seconds. Healthy means all monitored targets respond and no service alerts are firing; it does not verify business transactions.',
+  refresh: 'Refresh', filter: 'Filter services', incidentFilter: 'Exact service name (empty for all)',
+  loading: 'Loading…', error: 'Live data unavailable. Refresh to retry; current health is unknown.',
+  unavailable: 'Monitoring unavailable. Service health is unknown.', updated: 'Last checked:',
+  healthy: 'Healthy', degraded: 'Degraded / firing alerts', down: 'Down', unknown: 'Unknown / no fresh monitoring data',
+  targets: 'Targets up:', noAlerts: 'No firing alerts reported (only meaningful when monitoring is available).',
+  empty: 'No services registered.', noIncidents: 'No incidents found.', previous: 'Previous', next: 'Next',
+} }, true, true)
+i18n.addResourceBundle('zh', 'translation', { health: {
+  title: '即時服務健康', description: '每 30 秒更新。健康表示所有受監控目標可回應且無服務告警；不代表業務交易已通過驗證。',
+  refresh: '重新整理', filter: '篩選服務', incidentFilter: '完整服務名稱（留空顯示全部）',
+  loading: '載入中…', error: '無法取得即時資料，目前健康狀態未知，請重新整理重試。',
+  unavailable: '監控資料無法取得，服務健康狀態未知。', updated: '最後查詢時間：',
+  healthy: '健康', degraded: '異常／告警中', down: '無法連線', unknown: '未知／無新鮮監控資料',
+  targets: '可連線目標：', noAlerts: '未回報觸發中的告警（僅在監控可用時有意義）。',
+  empty: '尚未登錄服務。', noIncidents: '查無事故。', previous: '上一頁', next: '下一頁',
+} }, true, true)
+
 export default i18n

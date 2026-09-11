@@ -2256,3 +2256,10 @@
     display: none;
   }
 }
+.health-panel { padding: 24px; }
+.health-panel input { padding: 10px; width: min(100%, 380px); color: inherit; background: transparent; border: 1px solid #8892a6; border-radius: 6px; }
+.health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.service-health-healthy { color: #16834a; font-weight: 700; }
+.service-health-degraded { color: #b87605; font-weight: 700; }
+.service-health-down { color: #dc4141; font-weight: 700; }
+.service-health-unknown { font-weight: 700; }
